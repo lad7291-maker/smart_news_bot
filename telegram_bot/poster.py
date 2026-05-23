@@ -6,6 +6,16 @@ import asyncio
 from typing import List, Dict, Any
 from aiogram.types import URLInputFile
 from aiogram.exceptions import TelegramAPIError
+
+# Собираем tuple сетевых ошибок для retry; добавляем aiohttp.ClientConnectionError если доступен
+_NETWORK_ERRORS = [ConnectionError, TimeoutError, OSError]
+try:
+    from aiohttp import ClientConnectionError
+    _NETWORK_ERRORS.append(ClientConnectionError)
+except ImportError:
+    pass
+_NETWORK_ERRORS = tuple(_NETWORK_ERRORS)
+
 from .core import bot
 from .formatter import format_news_post
 from config import config
@@ -29,7 +39,7 @@ async def _send_with_retry(send_func, max_retries=3, base_delay=2):
     for attempt in range(max_retries):
         try:
             return await send_func()
-        except (ConnectionError, TimeoutError, OSError) as e:
+        except _NETWORK_ERRORS as e:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
                 logger.warning(f"⚠️ Сеть Telegram недоступна (попытка {attempt+1}/{max_retries}), ждём {delay}s...")
