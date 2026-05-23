@@ -9,28 +9,23 @@ from urllib.parse import urlparse
 
 # Паттерны, указывающие на НЕРЕЛЕВАНТНОЕ изображение
 _IRRELEVANT_PATTERNS = {
-    # Adult / NSFW
-    "porn", "porno", "xxx", "adult", "nsfw", "nude", "naked",
-    "sex", "sexy", "erotic", "escort", "onlyfans", "camgirl",
-    "bikini", "lingerie", "fetish", "bdsm", "hentai", "rule34",
+    # Adult / NSFW (только самые явные)
+    "porn", "porno", "xxx", "adult", "nsfw", "nude",
     # YouTube / Music
-    "youtube.com", "ytimg.com", "youtu.be", "vevo",
+    
     # Education / Math
-    "methodologique", "guide methodologique", "oral dnb",
-    "hodge conjecture", "topological cycle",
+    
+    
     # Music / Entertainment
-    "freya skye", "pop singer", "album cover",
+    
     # Food / Shopping
-    "lindt", "chocolate", "home of chocolate",
-    # Stock photos
-    "alamy.com", "shutterstock.com", "dreamstime",
-    # UI elements
-    "favicon", "icon", "logo", "button", "badge",
+    
+    # UI elements (icon/logo/button — точно не фото к новости)
+    "favicon", "icon.png", "logo.png", "logo.svg", "button", "badge",
     # Memes / Jokes
-    "meme", "funny", "lol", "joke",
-    # Games
-    "game", "gaming", "playstation", "xbox", "nintendo",
-    "fortnite", "minecraft", "gta", "witcher",
+    "meme", "funny", "lol", "joke", "comic",
+    # Games (только явно игровые)
+    "fortnite", "minecraft", "gta5", "gta_v", "witcher3",
 }
 
 # Надежные новостные домены

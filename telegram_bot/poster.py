@@ -21,6 +21,27 @@ def _truncate_caption(text: str, max_len: int = 1024) -> str:
     return truncated + "…"
 
 
+async def _send_with_retry(send_func, max_retries=3, base_delay=2):
+    """
+    Отправляет сообщение с повторными попытками при сетевых ошибках.
+    Exponential backoff: 2s, 4s, 8s
+    """
+    for attempt in range(max_retries):
+        try:
+            return await send_func()
+        except (ConnectionError, TimeoutError, OSError) as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"⚠️ Сеть Telegram недоступна (попытка {attempt+1}/{max_retries}), ждём {delay}s...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ Telegram недоступен после {max_retries} попыток: {e}")
+                raise
+        except TelegramAPIError:
+            # API ошибки (не сеть) — не ретраим
+            raise
+
+
 async def send_news_to_channel(article: Dict[str, Any]) -> bool:
     """
     Отправляет одну новость в канал.
@@ -36,29 +57,29 @@ async def send_news_to_channel(article: Dict[str, Any]) -> bool:
             # Отправляем с реальным фото
             caption = _truncate_caption(message_text)
             photo = URLInputFile(image_url)
-            await bot.send_photo(
+            await _send_with_retry(lambda: bot.send_photo(
                 chat_id=config.TELEGRAM_CHANNEL_ID,
                 photo=photo,
                 caption=caption,
-            )
+            ))
             logger.info(f"✅ Отправлено с фото: {article['title'][:50]}...")
         elif image_url and is_fallback:
             # Fallback-изображение (флаг/логотип) — отправляем как фото
             caption = _truncate_caption(message_text)
             photo = URLInputFile(image_url)
-            await bot.send_photo(
+            await _send_with_retry(lambda: bot.send_photo(
                 chat_id=config.TELEGRAM_CHANNEL_ID,
                 photo=photo,
                 caption=caption,
-            )
+            ))
             logger.info(f"✅ Отправлено с fallback-фото ({article.get('image_source', 'unknown')}): {article['title'][:50]}...")
         else:
             # Без фото — текст с превью ссылки
-            await bot.send_message(
+            await _send_with_retry(lambda: bot.send_message(
                 chat_id=config.TELEGRAM_CHANNEL_ID,
                 text=message_text,
                 disable_web_page_preview=False,
-            )
+            ))
             logger.info(f"✅ Отправлено (текст): {article['title'][:50]}...")
         return True
     except TelegramAPIError as e:
