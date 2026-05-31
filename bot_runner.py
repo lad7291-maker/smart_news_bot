@@ -44,9 +44,36 @@ logger = logging.getLogger(__name__)
 
 # ========== БАЗОВЫЕ НАСТРОЙКИ ==========
 PUBLISH_INTERVAL_MINUTES: int = 15  # Как часто запускать сбор RSS-лент (минут)
-ADMIN_ID: int = 1718706291  # Ваш Telegram ID
+ADMIN_ID: int = int(os.getenv("ADMIN_TELEGRAM_ID", "1718706291"))  # Только админ имеет доступ
 MAX_POSTS_PER_RUN: Optional[int] = None  # None = не ограничивать количество новостей за прогон
 # ======================================
+
+
+# === FEAT-021: Проверка доступа (только админ) ===
+def _is_admin(user_id: int) -> bool:
+    """Проверяет, является ли пользователь админом."""
+    return user_id == ADMIN_ID
+
+
+async def _require_admin(message: types.Message) -> bool:
+    """Отправляет отказ, если пользователь не админ. Возвращает True если админ."""
+    if not _is_admin(message.from_user.id):
+        await message.answer("🚫 Доступ запрещён. Этот бот только для администратора.")
+        logger.warning(f"Попытка доступа от неавторизованного пользователя: {message.from_user.id}")
+        return False
+    return True
+
+
+async def _require_admin_callback(callback: types.CallbackQuery) -> bool:
+    """Отправляет отказ, если пользователь не админ. Возвращает True если админ."""
+    if not _is_admin(callback.from_user.id):
+        await callback.answer("🚫 Доступ запрещён.", show_alert=True)
+        logger.warning(
+            f"Попытка доступа от неавторизованного пользователя: {callback.from_user.id}"
+        )
+        return False
+    return True
+
 
 # === НАСТРОЙКИ ЗАДЕРЖЕК (секунды) ===
 # Установлены по вашему желанию:
@@ -848,6 +875,8 @@ def _build_minscore_keyboard(current: int) -> InlineKeyboardMarkup:
 
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message) -> None:
+    if not await _require_admin(message):
+        return
     await message.answer(
         "🤖 *Smart News Bot — 10‑балльная система*\n"
         "Собирает мировые новости, переводит и оценивает значимость.\n\n"
@@ -862,6 +891,8 @@ async def cmd_start(message: types.Message) -> None:
 
 @dp.message(Command("post_now"))
 async def cmd_post_now(message: types.Message) -> None:
+    if not await _require_admin(message):
+        return
     await message.answer("🔍 Запускаю внеочередной сбор...")
     asyncio.create_task(job_collect_news())
     await message.answer("✅ Задача запущена.")
@@ -869,6 +900,8 @@ async def cmd_post_now(message: types.Message) -> None:
 
 @dp.message(Command("stats"))
 async def cmd_stats(message: types.Message) -> None:
+    if not await _require_admin(message):
+        return
     stats = cache_manager.get_processing_stats()
     scheduled_count = 0
     if scheduler is not None:
@@ -886,6 +919,8 @@ async def cmd_stats(message: types.Message) -> None:
 
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message) -> None:
+    if not await _require_admin(message):
+        return
     await cmd_start(message)
 
 
@@ -893,6 +928,8 @@ async def cmd_help(message: types.Message) -> None:
 @dp.message(Command("topic"))
 async def cmd_topic(message: types.Message) -> None:
     """Подписаться на тему: /topic крипто"""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -922,6 +959,8 @@ async def cmd_topic(message: types.Message) -> None:
 @dp.message(Command("notopic"))
 async def cmd_notopic(message: types.Message) -> None:
     """Отписаться от темы: /notopic крипто"""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -948,6 +987,8 @@ async def cmd_notopic(message: types.Message) -> None:
 @dp.message(Command("block"))
 async def cmd_block(message: types.Message) -> None:
     """Заблокировать тему: /block спорт"""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -977,6 +1018,8 @@ async def cmd_block(message: types.Message) -> None:
 @dp.message(Command("unblock"))
 async def cmd_unblock(message: types.Message) -> None:
     """Разблокировать тему: /unblock спорт"""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -1003,6 +1046,8 @@ async def cmd_unblock(message: types.Message) -> None:
 @dp.message(Command("mytopics"))
 async def cmd_mytopics(message: types.Message) -> None:
     """Показать текущие подписки и блокировки."""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     prefs = cache_manager.get_user_prefs(chat_id)
 
@@ -1037,6 +1082,8 @@ async def cmd_mytopics(message: types.Message) -> None:
 @dp.message(Command("minscore"))
 async def cmd_minscore(message: types.Message) -> None:
     """Установить минимальный балл: /minscore 5"""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     args = message.text.split(maxsplit=1)
     if len(args) < 2:
@@ -1067,6 +1114,8 @@ async def cmd_minscore(message: types.Message) -> None:
 # === Callback-обработчики inline-клавиатуры (FEAT-005 + FEAT-019) ===
 @dp.callback_query(F.data == "post_now")
 async def cb_post_now(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer("Запускаю сбор...")
     asyncio.create_task(job_collect_news())
     await callback.message.answer("✅ Внеочередной сбор запущен.")
@@ -1074,6 +1123,8 @@ async def cb_post_now(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data == "stats")
 async def cb_stats(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer()
     stats = cache_manager.get_processing_stats()
     scheduled_count = 0
@@ -1092,6 +1143,8 @@ async def cb_stats(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data == "help")
 async def cb_help(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer()
     await callback.message.answer(
         "🤖 *Smart News Bot — 10‑балльная система*\n"
@@ -1111,6 +1164,8 @@ async def cb_help(callback: types.CallbackQuery) -> None:
 # === FEAT-019: Callback-обработчики меню настроек ===
 @dp.callback_query(F.data == "start_menu")
 async def cb_start_menu(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer()
     await callback.message.edit_text(
         "🤖 *Smart News Bot — 10‑балльная система*\n"
@@ -1126,6 +1181,8 @@ async def cb_start_menu(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data == "settings_menu")
 async def cb_settings_menu(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer()
     chat_id = str(callback.message.chat.id)
     prefs = cache_manager.get_user_prefs(chat_id)
@@ -1149,6 +1206,8 @@ async def cb_settings_menu(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data.startswith("topic_toggle:"))
 async def cb_topic_toggle(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     chat_id = str(callback.message.chat.id)
     topic = callback.data.split(":", 1)[1]
     prefs = cache_manager.get_user_prefs(chat_id)
@@ -1167,6 +1226,8 @@ async def cb_topic_toggle(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data.startswith("block_toggle:"))
 async def cb_block_toggle(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     chat_id = str(callback.message.chat.id)
     topic = callback.data.split(":", 1)[1]
     prefs = cache_manager.get_user_prefs(chat_id)
@@ -1185,6 +1246,8 @@ async def cb_block_toggle(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data == "minscore_menu")
 async def cb_minscore_menu(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     await callback.answer()
     chat_id = str(callback.message.chat.id)
     prefs = cache_manager.get_user_prefs(chat_id)
@@ -1200,6 +1263,8 @@ async def cb_minscore_menu(callback: types.CallbackQuery) -> None:
 
 @dp.callback_query(F.data.startswith("minscore_set:"))
 async def cb_minscore_set(callback: types.CallbackQuery) -> None:
+    if not await _require_admin_callback(callback):
+        return
     chat_id = str(callback.message.chat.id)
     score = int(callback.data.split(":", 1)[1])
     cache_manager.set_user_prefs(chat_id, min_score=score)
@@ -1210,6 +1275,8 @@ async def cb_minscore_set(callback: types.CallbackQuery) -> None:
 @dp.message(Command("settings"))
 async def cmd_settings(message: types.Message) -> None:
     """Открыть меню настроек (FEAT-019)."""
+    if not await _require_admin(message):
+        return
     chat_id = str(message.chat.id)
     await message.answer(
         "⚙️ *Настройки персонализации*\n\n"
@@ -1222,6 +1289,8 @@ async def cmd_settings(message: types.Message) -> None:
 @dp.message(Command("health"))
 async def cmd_health(message: types.Message) -> None:
     """Показать статус health-check (FEAT-020)."""
+    if not await _require_admin(message):
+        return
     status = health_checker.get_status()
 
     lines = ["🏥 *Health Check Status*\n"]
