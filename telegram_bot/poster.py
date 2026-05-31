@@ -1,13 +1,8 @@
-"""
-Модуль для отправки новостей в Telegram-канал.
-Поддерживает отправку с изображением (image_url) или текстом.
-"""
 import asyncio
-from typing import List, Dict, Any
+from typing import Dict, Any
 from aiogram.types import URLInputFile
 from aiogram.exceptions import TelegramAPIError
 
-# Собираем tuple сетевых ошибок для retry; добавляем aiohttp.ClientConnectionError если доступен
 _NETWORK_ERRORS = [ConnectionError, TimeoutError, OSError]
 try:
     from aiohttp import ClientConnectionError
@@ -23,91 +18,93 @@ from utils.logger import logger
 
 
 def _truncate_caption(text: str, max_len: int = 1024) -> str:
-    """Обрезает текст до лимита caption Telegram (1024 символа)."""
     if len(text) <= max_len:
         return text
-    # Оставляем запас на многоточие
-    truncated = text[: max_len - 3].rsplit(" ", 1)[0]
-    return truncated + "…"
+    truncated = text[: max_len - 3].rsplit(' ', 1)[0]
+    return truncated + '…'
 
 
 async def _send_with_retry(send_func, max_retries=3, base_delay=2):
-    """
-    Отправляет сообщение с повторными попытками при сетевых ошибках.
-    Exponential backoff: 2s, 4s, 8s
-    """
     for attempt in range(max_retries):
         try:
             return await send_func()
         except _NETWORK_ERRORS as e:
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
-                logger.warning(f"⚠️ Сеть Telegram недоступна (попытка {attempt+1}/{max_retries}), ждём {delay}s...")
+                logger.warning(f'⚠️ Сеть Telegram недоступна (попытка {attempt+1}/{max_retries}), ждём {delay}s...')
                 await asyncio.sleep(delay)
             else:
-                logger.error(f"❌ Telegram недоступен после {max_retries} попыток: {e}")
+                logger.error(f'❌ Telegram недоступен после {max_retries} попыток: {e}')
                 raise
         except TelegramAPIError:
-            # API ошибки (не сеть) — не ретраим
             raise
 
 
 async def send_news_to_channel(article: Dict[str, Any]) -> bool:
-    """
-    Отправляет одну новость в канал.
-    Если в article есть 'image_url' — отправляет как фото с caption.
-    Если фото нет или оно нерелевантное — отправляет текст с превью ссылки.
-    """
     try:
         message_text = format_news_post(article)
-        image_url = article.get("image_url")
-        is_fallback = article.get("image_is_fallback", False)
+        image_url = article.get('image_url')
+        is_fallback = article.get('image_is_fallback', False)
 
-        if image_url and not is_fallback:
-            # Отправляем с реальным фото
-            caption = _truncate_caption(message_text)
-            photo = URLInputFile(image_url)
-            await _send_with_retry(lambda: bot.send_photo(
-                chat_id=config.TELEGRAM_CHANNEL_ID,
-                photo=photo,
-                caption=caption,
-            ))
-            logger.info(f"✅ Отправлено с фото: {article['title'][:50]}...")
-        elif image_url and is_fallback:
-            # Fallback-изображение (флаг/логотип) — отправляем как фото
-            caption = _truncate_caption(message_text)
-            photo = URLInputFile(image_url)
-            await _send_with_retry(lambda: bot.send_photo(
-                chat_id=config.TELEGRAM_CHANNEL_ID,
-                photo=photo,
-                caption=caption,
-            ))
-            logger.info(f"✅ Отправлено с fallback-фото ({article.get('image_source', 'unknown')}): {article['title'][:50]}...")
+        if image_url:
+            try:
+                caption = _truncate_caption(message_text)
+                photo = URLInputFile(image_url)
+                await _send_with_retry(lambda: bot.send_photo(
+                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    photo=photo,
+                    caption=caption,
+                ))
+                src = article.get('image_source', 'unknown')
+                if is_fallback:
+                    logger.info(f'✅ Отправлено с fallback-фото ({src}): {article["title"][:50]}...')
+                else:
+                    logger.info(f'✅ Отправлено с фото: {article["title"][:50]}...')
+                return True
+            except Exception as photo_err:
+                logger.warning(f'⚠️ Фото не загрузилось ({photo_err}), отправляем текстом: {article["title"][:50]}...')
+                await _send_with_retry(lambda: bot.send_message(
+                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    text=message_text,
+                    disable_web_page_preview=False,
+                ))
+                logger.info(f'✅ Отправлено (текст, фото недоступно): {article["title"][:50]}...')
+                return True
         else:
-            # Без фото — текст с превью ссылки
             await _send_with_retry(lambda: bot.send_message(
                 chat_id=config.TELEGRAM_CHANNEL_ID,
                 text=message_text,
                 disable_web_page_preview=False,
             ))
-            logger.info(f"✅ Отправлено (текст): {article['title'][:50]}...")
-        return True
+            logger.info(f'✅ Отправлено (текст): {article["title"][:50]}...')
+            return True
     except TelegramAPIError as e:
-        logger.error(f"❌ Ошибка Telegram API: {e}")
+        logger.error(f'❌ Ошибка Telegram API: {e}')
         return False
     except Exception as e:
-        logger.error(f"❌ Неизвестная ошибка при отправке: {e}", exc_info=True)
+        logger.error(f'❌ Неизвестная ошибка при отправке: {e}', exc_info=True)
         return False
 
-async def send_multiple_news(articles: List[Dict[str, Any]], 
-                            max_posts: int = 3, 
-                            delay: float = 2.0) -> int:
+
+async def send_multiple_news(articles, max_posts=3, delay=3):
+    """Отправляет несколько новостей в канал с задержкой между постами.
+    
+    Args:
+        articles: список словарей с новостями
+        max_posts: максимальное количество постов
+        delay: задержка между постами в секундах
+    
+    Returns:
+        int: количество успешно отправленных постов
     """
-    Отправляет несколько новостей с паузой.
-    """
-    sent_count = 0
+    sent = 0
     for article in articles[:max_posts]:
-        if await send_news_to_channel(article):
-            sent_count += 1
-            await asyncio.sleep(delay)
-    return sent_count
+        try:
+            success = await send_news_to_channel(article)
+            if success:
+                sent += 1
+            if delay and len(articles[:max_posts]) > 1:
+                await asyncio.sleep(delay)
+        except Exception as e:
+            logger.error(f'❌ Ошибка при отправке поста {sent+1}: {e}')
+    return sent

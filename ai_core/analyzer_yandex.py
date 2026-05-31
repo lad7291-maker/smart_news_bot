@@ -57,7 +57,6 @@ async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5)
     for model in models:
         try:
             leaders_ctx = get_leaders_context()
-            leaders_ctx = get_leaders_context()
             system_content = (
                 "Трейдер-аналитик. Кратко, по делу.\n\n"
                 "ВАЖНО: Используй актуальные данные о мировых лидерах и их должностях. "
@@ -77,10 +76,13 @@ async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5)
                 ]
             }
 
-            async with aiohttp.ClientSession() as session:
+            session = aiohttp.ClientSession()
+            try:
                 async with session.post(url, json=payload, headers=headers, timeout=20) as resp:
                     resp.raise_for_status()
                     result = await resp.json()
+            finally:
+                await session.close()
 
             comment = result["result"]["alternatives"][0]["message"]["text"]
 

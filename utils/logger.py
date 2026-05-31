@@ -1,10 +1,11 @@
 import logging
 import sys
 from pathlib import Path
+from logging.handlers import RotatingFileHandler
 from config import config
 
 def setup_logging():
-    """Настройка продвинутого логирования с UTF-8"""
+    """Настройка продвинутого логирования с UTF-8 и ротацией (FEAT-010)"""
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
     
@@ -22,13 +23,23 @@ def setup_logging():
         '%(levelname)-8s | %(message)s'
     )
     
-    # Файловый лог (все уровни)
-    file_handler = logging.FileHandler(logs_dir / "bot.log", encoding='utf-8')
+    # Файловый лог с ротацией (FEAT-010): 10 МБ, храним 5 бэкапов
+    file_handler = RotatingFileHandler(
+        logs_dir / "bot.log",
+        encoding='utf-8',
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=5
+    )
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(detailed_formatter)
     
-    # Файл ошибок
-    error_handler = logging.FileHandler(logs_dir / "errors.log", encoding='utf-8')
+    # Файл ошибок с ротацией (FEAT-010)
+    error_handler = RotatingFileHandler(
+        logs_dir / "errors.log",
+        encoding='utf-8',
+        maxBytes=10 * 1024 * 1024,  # 10 MB
+        backupCount=3
+    )
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(detailed_formatter)
     

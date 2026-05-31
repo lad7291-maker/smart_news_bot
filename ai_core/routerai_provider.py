@@ -72,15 +72,17 @@ class RouterAIProvider:
 Текст: {summary[:900]}"""
 
     async def _make_request(self, payload: Dict, timeout: int = 45, retries: int = 3) -> Dict:
-        """Универсальная отправка с retry и exponential backoff."""
+        """Универсальная отправка с retry и exponential backoff.
+        Использует единую сессию для предотвращения утечек (BUG-002)."""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
 
-        for attempt in range(1, retries + 1):
-            try:
-                async with aiohttp.ClientSession() as session:
+        session = aiohttp.ClientSession()
+        try:
+            for attempt in range(1, retries + 1):
+                try:
                     async with session.post(
                         f"{self.BASE_URL}/chat/completions",
                         json=payload,
@@ -99,11 +101,13 @@ class RouterAIProvider:
                         resp.raise_for_status()
                         return await resp.json()
 
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                logger.warning(f"RouterAI request failed (attempt {attempt}/{retries}): {e}")
-                if attempt == retries:
-                    raise
-                await asyncio.sleep(2 ** attempt)
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.warning(f"RouterAI request failed (attempt {attempt}/{retries}): {e}")
+                    if attempt == retries:
+                        raise
+                    await asyncio.sleep(2 ** attempt)
+        finally:
+            await session.close()
 
         raise Exception("All RouterAI retries failed")
 
@@ -116,7 +120,6 @@ class RouterAIProvider:
         prompt = self._build_prompt(title, summary, score)
         temperature = 0.3 if score >= 8 else 0.5
 
-        leaders_ctx = get_leaders_context()
         leaders_ctx = get_leaders_context()
         system_content = (
             "Ты редактор новостей. Простой язык, факты, контекст. Без прогнозов и торговых терминов.\n\n"
@@ -147,6 +150,7 @@ class RouterAIProvider:
         total_cost = input_cost + output_cost
 
         text = self._clean_text(text)
+        text = self._validate_output(text)  # FEAT-007: валидация AI-выхода
         logger.info(
             f"RouterAI ({self.model}): {title[:40]}... | "
             f"Tokens: {tokens} | Cost: ${total_cost:.5f}"
@@ -166,6 +170,41 @@ class RouterAIProvider:
             text = text.replace(ch, '')
         lines = [line.strip() for line in text.split('\n') if line.strip()]
         return '\n'.join(lines)
+
+    def _validate_output(self, text: str) -> str:
+        """
+        Валидация AI-выхода (FEAT-007).
+        Проверяет и исправляет распространённые проблемы.
+        """
+        if not text:
+            return "AI analysis temporarily unavailable."
+
+        # Убираем markdown-звёздочки
+        text = text.replace('**', '').replace('*', '')
+
+        # Убираем списки с bullet points (запрещены в промпте)
+        lines = []
+        for line in text.split('\n'):
+            stripped = line.strip()
+            if stripped.startswith(('- ', '• ', '— ')):
+                line = stripped[2:]
+            lines.append(line)
+        text = '\n'.join(lines)
+
+        # Убираем торговые термины (если пробрались)
+        trading_terms = ['лонг', 'шорт', 'волатильность', 'маржин', 'плечо']
+        for term in trading_terms:
+            text = text.replace(term, '[...]')
+
+        # Убираем прямые рекомендации
+        if any(phrase in text.lower() for phrase in ['покупайте', 'продавайте', 'держите', 'вложите']):
+            text += "\n\n(Редакция: инвестиционные рекомендации удалены)"
+
+        # Ограничиваем длину
+        if len(text) > 800:
+            text = text[:797] + '...'
+
+        return text.strip()
 
 
 # Глобальный экземпляр

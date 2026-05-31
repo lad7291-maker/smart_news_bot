@@ -37,6 +37,9 @@ _RELIABLE_DOMAINS = {
     "ria.ru", "tass.ru", "rbc.ru", "kommersant.ru",
     "interfax.ru", "rt.com", "sputniknews.com",
     "xinhuanet.com", "scmp.com",
+    # Надежные CDN для fallback-изображений (FEAT-009)
+    "flagcdn.com",
+    "cryptologos.cc",
 }
 
 
@@ -187,16 +190,16 @@ def get_fallback_image_url(source: str) -> Optional[str]:
     """
     source_lower = source.lower()
     
-    # Флаги стран для геополитических источников
+    # Флаги стран для геополитических источников (flagcdn — надёжный CDN)
     flags = {
-        "rt": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Russia_flag_icon.svg/320px-Russia_flag_icon.svg.png",
-        "ria": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Russia_flag_icon.svg/320px-Russia_flag_icon.svg.png",
-        "tass": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Russia_flag_icon.svg/320px-Russia_flag_icon.svg.png",
-        "interfax": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Russia_flag_icon.svg/320px-Russia_flag_icon.svg.png",
-        "cnbc": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Flag_of_the_United_States.svg/320px-Flag_of_the_United_States.svg.png",
-        "nyt": "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Flag_of_the_United_States.svg/320px-Flag_of_the_United_States.svg.png",
-        "coindesk": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/320px-Bitcoin.svg.png",
-        "cointelegraph": "https://upload.wikimedia.org/wikipedia/commons/thumb/4/46/Bitcoin.svg/320px-Bitcoin.svg.png",
+        "rt": "https://flagcdn.com/w320/ru.png",
+        "ria": "https://flagcdn.com/w320/ru.png",
+        "tass": "https://flagcdn.com/w320/ru.png",
+        "interfax": "https://flagcdn.com/w320/ru.png",
+        "cnbc": "https://flagcdn.com/w320/us.png",
+        "nyt": "https://flagcdn.com/w320/us.png",
+        "coindesk": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
+        "cointelegraph": "https://cryptologos.cc/logos/bitcoin-btc-logo.png",
     }
     
     for key, url in flags.items():

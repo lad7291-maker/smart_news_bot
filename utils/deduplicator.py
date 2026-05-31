@@ -3,6 +3,7 @@
 Убирает дубли одной и той же новости из разных источников.
 """
 import re
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Set
 from difflib import SequenceMatcher
 from utils.logger import logger
@@ -334,5 +335,3 @@ def deduplicate_articles(articles: List[Dict[str, Any]],
     return unique
 
 
-# Для совместимости с импортом datetime внутри функции
-from datetime import datetime, timedelta

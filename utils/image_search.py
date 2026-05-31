@@ -80,6 +80,9 @@ _NEWS_DOMAINS = {
     "redditmedia.com", "redd.it",
     "imgur.com", "i.imgur.com",
     "wikimedia.org", "wikipedia.org",
+    # Флаги стран и крипто-логотипы (fallback CDN — FEAT-009)
+    "flagcdn.com",
+    "cryptologos.cc",
 }
 
 # Предпочтительные форматы изображений (по убыванию приоритета)

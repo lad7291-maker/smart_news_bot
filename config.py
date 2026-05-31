@@ -18,6 +18,11 @@ class Config:
     USER_AGENT = os.getenv('USER_AGENT', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
     CACHE_DURATION_DAYS = int(os.getenv('CACHE_DURATION_DAYS', 7))
 
+    # ============ Webhook (опционально) ============
+    WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # Если задан — используем webhook вместо polling
+    WEBHOOK_PORT = int(os.getenv('WEBHOOK_PORT', 8080))
+    WEBHOOK_PATH = os.getenv('WEBHOOK_PATH', '/webhook')
+
     # ============ RSS-ИСТОЧНИКИ (ТОЛЬКО РАБОЧИЕ) ============
     RSS_SOURCES = [
         # ----- РУССКОЯЗЫЧНЫЕ (ПРОВЕРЕННЫЕ) -----

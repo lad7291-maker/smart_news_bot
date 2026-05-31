@@ -159,7 +159,7 @@ RUSSIA_ADMINISTRATION = {
 # === China ===
 CHINA_ADMINISTRATION = {
     "president": {
-        "name_ru": "Si Tszinpin",
+        "name_ru": "Xi Jinping",
         "name_en": "Xi Jinpin",
         "title_ru": "President of China",
         "title_en": "President of China",
@@ -215,8 +215,8 @@ EU_LEADERS = {
 # === United Kingdom ===
 UK_ADMINISTRATION = {
     "prime_minister": {
-        "name_ru": "Kir Starmer",
-        "name_en": "Kir Starmer",
+        "name_ru": "Keir Starmer",
+        "name_en": "Keir Starmer",
         "title_ru": "Prime Minister of the United Kingdom",
         "title_en": "Prime Minister of the United Kingdom",
         "since": "2024-07-05",
@@ -281,8 +281,8 @@ UKRAINE_ADMINISTRATION = {
         "note": "Second term"
     },
     "prime_minister": {
-        "name_ru": "Denys Skmyhal",
-        "name_en": "Denys Skmyhal",
+        "name_ru": "Denys Shmyhal",
+        "name_en": "Denys Shmyhal",
         "title_ru": "Prime Minister of Ukraine",
         "title_en": "Prime Minister of Ukraine",
     },
@@ -322,20 +322,20 @@ ISRAEL_ADMINISTRATION = {
         "title_en": "Minister of Defense",
     },
     "foreign_minister": {
-        "name_ru": "Gadi Esekal",
-        "name_en": "Gadi Esekal",
+        "name_ru": "Gadi Eisenkot",
+        "name_en": "Gadi Eisenkot",
         "title_ru": "Minister of Foreign Affairs of Israel",
         "title_en": "Minister of Foreign Affairs",
     },
     "finance_minister": {
-        "name_ru": "Bezalel Smetrich",
-        "name_en": "Bezalel Smetrich",
+        "name_ru": "Bezalel Smotrich",
+        "name_en": "Bezalel Smotrich",
         "title_ru": "Minister of Finance of Israel",
         "title_en": "Minister of Finance",
     },
     "central_bank_governor": {
-        "name_ru": "Amir Yazon",
-        "name_en": "Amir Yazon",
+        "name_ru": "Amir Yaron",
+        "name_en": "Amir Yaron",
         "title_ru": "Governor of the Bank of Israel",
         "title_en": "Governor of the Bank of Israel",
     },

@@ -102,10 +102,12 @@ class AIProvider:
         return self.routerai._build_prompt(title, summary, score)
 
     async def _make_request(self, url: str, headers: Dict, payload: Dict, timeout: int = 30, retries: int = 3) -> Dict:
-        """Универсальная отправка POST с retry (для legacy/fallback)."""
-        for attempt in range(1, retries + 1):
-            try:
-                async with aiohttp.ClientSession() as session:
+        """Универсальная отправка POST с retry (для legacy/fallback).
+        Использует единую сессию для предотвращения утечек (BUG-002)."""
+        session = aiohttp.ClientSession()
+        try:
+            for attempt in range(1, retries + 1):
+                try:
                     async with session.post(url, json=payload, headers=headers, timeout=timeout) as resp:
                         if resp.status == 429:
                             wait = 2 ** attempt
@@ -114,11 +116,13 @@ class AIProvider:
                             continue
                         resp.raise_for_status()
                         return await resp.json()
-            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-                logger.warning(f"Request failed (attempt {attempt}/{retries}): {e}")
-                if attempt == retries:
-                    raise
-                await asyncio.sleep(2 ** attempt)
+                except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                    logger.warning(f"Request failed (attempt {attempt}/{retries}): {e}")
+                    if attempt == retries:
+                        raise
+                    await asyncio.sleep(2 ** attempt)
+        finally:
+            await session.close()
         raise Exception("All retries failed")
 
     async def _yandex_analyze(self, title: str, summary: str, score: int) -> AIResponse:
