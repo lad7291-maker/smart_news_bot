@@ -306,7 +306,7 @@ def _is_advertorial(title: str) -> bool:
     return False
 
 
-def filter_article(article: Dict[str, Any]) -> bool:
+def filter_article(article: Dict[str, Any], user_prefs: Optional[Dict[str, Any]] = None) -> bool:
     title = (article.get("title") or "").strip()
     summary = (article.get("summary") or "").strip()
     full_text = f"{title} {summary}"
@@ -321,6 +321,14 @@ def filter_article(article: Dict[str, Any]) -> bool:
         logger.info(f"🚫 Рекламная статья отфильтрована: {title[:80]}...")
         return False
 
+    # FEAT-018: Фильтр по минимальному score пользователя
+    if user_prefs:
+        min_score = user_prefs.get("min_score", 1)
+        score = detect_score(article, user_prefs)
+        if score < min_score:
+            logger.debug(f"🗑 Score {score} < min_score {min_score}: {title[:60]}...")
+            return False
+
     # Минимальная длина summary — мусор обычно короткий
     if summary and len(summary) < 80:
         logger.debug(f"🗑 Слишком короткий summary ({len(summary)} симв.): {title[:60]}...")
@@ -329,7 +337,7 @@ def filter_article(article: Dict[str, Any]) -> bool:
     return is_russian(full_text) and is_relevant(full_text)
 
 
-def detect_score(article: Dict[str, Any]) -> int:
+def detect_score(article: Dict[str, Any], user_prefs: Optional[Dict[str, Any]] = None) -> int:
     """
     Оценивает новость по 10-балльной шкале (1–10).
     🔧 ИСПРАВЛЕНО:
@@ -337,9 +345,17 @@ def detect_score(article: Dict[str, Any]) -> int:
       - penalty начинается с 0.0 (не с 2.0), при штрафе -1.0
       - freshness начинается с 0.0 (нет фиксированного 1.5)
       - базовый балл источника снижен до разумных значений
+    FEAT-018: Учитывает персональные предпочтения пользователя/канала.
     """
     source_tag = (article.get("source_tag") or article.get("source") or "").strip()
     base_score = SOURCE_SCORES.get(source_tag, 2)  # по умолчанию 2
+
+    # FEAT-018: Персонализированный вес источника
+    if user_prefs:
+        source_weights = user_prefs.get("source_weights", {})
+        if source_tag in source_weights:
+            weight = source_weights[source_tag]
+            base_score = max(1, min(10, int(round(base_score * weight))))
 
     # Бонус за ключевые слова (максимум из найденных)
     title = (article.get("title") or "").lower()
@@ -350,12 +366,28 @@ def detect_score(article: Dict[str, Any]) -> int:
         if word.lower() in text:
             boost = max(boost, bonus)
 
+    # FEAT-018: Бонус за предпочитаемые темы
+    if user_prefs:
+        preferred = user_prefs.get("preferred_topics", [])
+        for topic in preferred:
+            if topic.lower() in text:
+                boost = max(boost, 2.0)  # +2 за предпочитаемую тему
+                break
+
     # Штраф за нерелевантные темы (спорт, кино и т.п.)
     penalty = 0.0
     for word in PENALTY_KEYWORDS:
         if word.lower() in text:
             penalty = -1.0
             break
+
+    # FEAT-018: Штраф за заблокированные темы
+    if user_prefs:
+        blocked = user_prefs.get("blocked_topics", [])
+        for topic in blocked:
+            if topic.lower() in text:
+                penalty = -5.0  # Сильный штраф за заблокированную тему
+                break
 
     # Бонус за свежесть (только если есть дата, иначе 0)
     freshness = 0.0
@@ -764,6 +796,181 @@ async def cmd_stats(message: types.Message) -> None:
 @dp.message(Command("help"))
 async def cmd_help(message: types.Message) -> None:
     await cmd_start(message)
+
+
+# === FEAT-018: Команды персонализации ===
+@dp.message(Command("topic"))
+async def cmd_topic(message: types.Message) -> None:
+    """Подписаться на тему: /topic крипто"""
+    chat_id = str(message.chat.id)
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "📝 Укажи тему для подписки:\n"
+            "`/topic крипто` — подписаться на крипто-новости\n"
+            "`/topic политика` — подписаться на политику\n\n"
+            "Твои текущие подписки: /mytopics"
+        )
+        return
+
+    topic = args[1].strip().lower()
+    prefs = cache_manager.get_user_prefs(chat_id)
+    preferred = prefs.get("preferred_topics", [])
+
+    if topic in preferred:
+        await message.answer(f"✅ Ты уже подписан на тему «{topic}»")
+        return
+
+    preferred.append(topic)
+    cache_manager.set_user_prefs(chat_id, preferred_topics=preferred)
+    await message.answer(
+        f"✅ Подписка на «{topic}» оформлена!\n\nТеперь новости по этой теме будут получать +2 к баллу."
+    )
+
+
+@dp.message(Command("notopic"))
+async def cmd_notopic(message: types.Message) -> None:
+    """Отписаться от темы: /notopic крипто"""
+    chat_id = str(message.chat.id)
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "📝 Укажи тему для отписки:\n"
+            "`/notopic крипто` — отписаться от крипто-новостей\n\n"
+            "Твои текущие подписки: /mytopics"
+        )
+        return
+
+    topic = args[1].strip().lower()
+    prefs = cache_manager.get_user_prefs(chat_id)
+    preferred = prefs.get("preferred_topics", [])
+
+    if topic not in preferred:
+        await message.answer(f"❌ Ты не подписан на тему «{topic}»")
+        return
+
+    preferred.remove(topic)
+    cache_manager.set_user_prefs(chat_id, preferred_topics=preferred)
+    await message.answer(f"✅ Подписка на «{topic}» отменена.")
+
+
+@dp.message(Command("block"))
+async def cmd_block(message: types.Message) -> None:
+    """Заблокировать тему: /block спорт"""
+    chat_id = str(message.chat.id)
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "📝 Укажи тему для блокировки:\n"
+            "`/block спорт` — не показывать спорт\n"
+            "`/block кино` — не показывать кино\n\n"
+            "Заблокированные темы: /mytopics"
+        )
+        return
+
+    topic = args[1].strip().lower()
+    prefs = cache_manager.get_user_prefs(chat_id)
+    blocked = prefs.get("blocked_topics", [])
+
+    if topic in blocked:
+        await message.answer(f"✅ Тема «{topic}» уже заблокирована")
+        return
+
+    blocked.append(topic)
+    cache_manager.set_user_prefs(chat_id, blocked_topics=blocked)
+    await message.answer(
+        f"🚫 Тема «{topic}» заблокирована.\n\nНовости с этой темой не будут показываться."
+    )
+
+
+@dp.message(Command("unblock"))
+async def cmd_unblock(message: types.Message) -> None:
+    """Разблокировать тему: /unblock спорт"""
+    chat_id = str(message.chat.id)
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(
+            "📝 Укажи тему для разблокировки:\n"
+            "`/unblock спорт` — снова показывать спорт\n\n"
+            "Заблокированные темы: /mytopics"
+        )
+        return
+
+    topic = args[1].strip().lower()
+    prefs = cache_manager.get_user_prefs(chat_id)
+    blocked = prefs.get("blocked_topics", [])
+
+    if topic not in blocked:
+        await message.answer(f"❌ Тема «{topic}» не заблокирована")
+        return
+
+    blocked.remove(topic)
+    cache_manager.set_user_prefs(chat_id, blocked_topics=blocked)
+    await message.answer(f"✅ Тема «{topic}» разблокирована.")
+
+
+@dp.message(Command("mytopics"))
+async def cmd_mytopics(message: types.Message) -> None:
+    """Показать текущие подписки и блокировки."""
+    chat_id = str(message.chat.id)
+    prefs = cache_manager.get_user_prefs(chat_id)
+
+    preferred = prefs.get("preferred_topics", [])
+    blocked = prefs.get("blocked_topics", [])
+    min_score = prefs.get("min_score", 1)
+
+    lines = ["📋 *Твои настройки:*\n"]
+
+    if preferred:
+        lines.append(f"✅ Подписки: {', '.join(preferred)}")
+    else:
+        lines.append("✅ Подписки: нет (все темы)")
+
+    if blocked:
+        lines.append(f"🚫 Блокировки: {', '.join(blocked)}")
+    else:
+        lines.append("🚫 Блокировки: нет")
+
+    lines.append(f"📊 Минимальный балл: {min_score}")
+
+    lines.append("\n*Команды:*")
+    lines.append("`/topic [тема]` — подписаться")
+    lines.append("`/notopic [тема]` — отписаться")
+    lines.append("`/block [тема]` — заблокировать")
+    lines.append("`/unblock [тема]` — разблокировать")
+    lines.append("`/minscore [1-10]` — минимальный балл")
+
+    await message.answer("\n".join(lines))
+
+
+@dp.message(Command("minscore"))
+async def cmd_minscore(message: types.Message) -> None:
+    """Установить минимальный балл: /minscore 5"""
+    chat_id = str(message.chat.id)
+    args = message.text.split(maxsplit=1)
+    if len(args) < 2:
+        prefs = cache_manager.get_user_prefs(chat_id)
+        current = prefs.get("min_score", 1)
+        await message.answer(
+            f"📊 Текущий минимальный балл: {current}\n\n"
+            "Укажи новое значение (1-10):\n"
+            "`/minscore 5` — показывать только новости от 5 баллов\n"
+            "`/minscore 1` — показывать все новости"
+        )
+        return
+
+    try:
+        score = int(args[1].strip())
+        if score < 1 or score > 10:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Укажи число от 1 до 10")
+        return
+
+    cache_manager.set_user_prefs(chat_id, min_score=score)
+    await message.answer(
+        f"✅ Минимальный балл установлен: {score}\n\nТеперь будут показываться только новости от {score} баллов."
+    )
 
 
 # === Callback-обработчики inline-клавиатуры (FEAT-005) ===

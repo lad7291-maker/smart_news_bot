@@ -45,6 +45,23 @@ class CacheManager:
             )
         """
         )
+        # FEAT-018: Персонализация — предпочтения пользователей/каналов
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                chat_id TEXT PRIMARY KEY,
+                preferred_topics TEXT DEFAULT '[]',
+                blocked_topics TEXT DEFAULT '[]',
+                source_weights TEXT DEFAULT '{}',
+                min_score INTEGER DEFAULT 1,
+                quiet_hours_start INTEGER DEFAULT 23,
+                quiet_hours_end INTEGER DEFAULT 7,
+                max_posts_per_hour INTEGER DEFAULT 8,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_link_hash ON processed_links(link_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON processed_links(status)")
         self.conn.commit()
@@ -348,6 +365,88 @@ class CacheManager:
         except sqlite3.Error as e:
             logger.error(f"Ошибка при поиске по теме: {e}")
             return None
+
+    # === FEAT-018: Методы персонализации ===
+
+    def get_user_prefs(self, chat_id: str) -> Dict[str, Any]:
+        """Возвращает предпочтения пользователя/канала."""
+        import json
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM user_preferences WHERE chat_id = ?", (chat_id,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    "chat_id": row["chat_id"],
+                    "preferred_topics": json.loads(row["preferred_topics"]),
+                    "blocked_topics": json.loads(row["blocked_topics"]),
+                    "source_weights": json.loads(row["source_weights"]),
+                    "min_score": row["min_score"],
+                    "quiet_hours_start": row["quiet_hours_start"],
+                    "quiet_hours_end": row["quiet_hours_end"],
+                    "max_posts_per_hour": row["max_posts_per_hour"],
+                }
+            # Возвращаем дефолтные настройки
+            return {
+                "chat_id": chat_id,
+                "preferred_topics": [],
+                "blocked_topics": [],
+                "source_weights": {},
+                "min_score": 1,
+                "quiet_hours_start": 23,
+                "quiet_hours_end": 7,
+                "max_posts_per_hour": 8,
+            }
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при чтении предпочтений: {e}")
+            return {
+                "chat_id": chat_id,
+                "preferred_topics": [],
+                "blocked_topics": [],
+                "source_weights": {},
+                "min_score": 1,
+                "quiet_hours_start": 23,
+                "quiet_hours_end": 7,
+                "max_posts_per_hour": 8,
+            }
+
+    def set_user_prefs(self, chat_id: str, **kwargs) -> bool:
+        """Обновляет предпочтения пользователя/канала."""
+        import json
+
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1 FROM user_preferences WHERE chat_id = ?", (chat_id,))
+            exists = cursor.fetchone() is not None
+
+            fields = []
+            values = []
+            for key, value in kwargs.items():
+                if key in (
+                    "preferred_topics",
+                    "blocked_topics",
+                    "source_weights",
+                ):
+                    value = json.dumps(value)
+                fields.append(f"{key} = ?")
+                values.append(value)
+
+            if not fields:
+                return True
+
+            values.append(chat_id)
+            if exists:
+                sql = f"UPDATE user_preferences SET {', '.join(fields)}, updated_at = CURRENT_TIMESTAMP WHERE chat_id = ?"
+            else:
+                sql = f"INSERT INTO user_preferences ({', '.join(kwargs.keys())}, chat_id) VALUES ({', '.join(['?'] * len(kwargs))}, ?)"
+
+            cursor.execute(sql, values)
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при сохранении предпочтений: {e}")
+            return False
 
     def close(self):
         if self.conn:
