@@ -508,6 +508,7 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"❌ Ошибка публикации ({link}): {e}", exc_info=True)
         cache_manager.mark_processed(link, success=False)
+        health_checker.record_error()  # FEAT-020: учитываем ошибку в health-check
 
 
 # === Дайджест yellow-новостей (FEAT-001) ===
@@ -532,6 +533,7 @@ async def _send_yellow_digest(articles: List[Dict[str, Any]]) -> None:
         logger.info(f"✅ Дайджест отправлен: {len(articles)} yellow-новостей")
     except Exception as e:
         logger.error(f"❌ Ошибка отправки дайджеста: {e}")
+        health_checker.record_error()  # FEAT-020: учитываем ошибку в health-check
 
 
 # === Сбор из одного источника ===
@@ -551,6 +553,7 @@ async def collect_from_source(source: Dict[str, Any]) -> List[Dict[str, Any]]:
         return fresh
     except Exception as e:
         logger.warning(f"Проблема при парсинге {url}: {e}")
+        health_checker.record_error()  # FEAT-020: учитываем ошибку в health-check
         return []
 
 
@@ -741,6 +744,7 @@ async def job_collect_news() -> None:
 
     except Exception as e:
         logger.error(f"❌ Критическая ошибка в job_collect_news: {e}", exc_info=True)
+        health_checker.record_error()  # FEAT-020: учитываем ошибку в health-check
 
 
 # === FEAT-019: Inline-меню настроек ===
@@ -1213,6 +1217,42 @@ async def cmd_settings(message: types.Message) -> None:
         "и установить минимальный балл для новостей.",
         reply_markup=_build_settings_keyboard(chat_id),
     )
+
+
+@dp.message(Command("health"))
+async def cmd_health(message: types.Message) -> None:
+    """Показать статус health-check (FEAT-020)."""
+    status = health_checker.get_status()
+
+    lines = ["🏥 *Health Check Status*\n"]
+
+    if status["healthy"]:
+        lines.append("✅ Статус: *ЗДОРОВ*")
+    else:
+        lines.append("🚨 Статус: *ПРОБЛЕМЫ*")
+
+    last_publish = status.get("last_publish")
+    if last_publish:
+        lines.append(f"🕐 Последняя публикация: {last_publish[:19]}")
+    else:
+        lines.append("🕐 Последняя публикация: нет")
+
+    lines.append(f"❌ Ошибок за час: {status['errors_last_hour']}")
+
+    for check_name, check_data in status["checks"].items():
+        ok = check_data.get("ok", True)
+        icon = "✅" if ok else "🚨"
+        if check_name == "silence":
+            minutes = check_data.get("minutes", 0)
+            threshold = check_data.get("threshold", 30)
+            lines.append(f"{icon} Молчание: {minutes:.0f} мин (порог {threshold})")
+        elif check_name == "errors":
+            count = check_data.get("count", 0)
+            threshold = check_data.get("threshold", 10)
+            lines.append(f"{icon} Ошибки: {count} (порог {threshold})")
+
+    lines.append("\nПроверка каждые 15 мин.")
+    await message.answer("\n".join(lines))
 
 
 # === Pidfile для предотвращения двойного запуска (BUG-001) ===

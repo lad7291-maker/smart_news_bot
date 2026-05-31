@@ -13,6 +13,11 @@ from utils.logger import logger
 # ID администратора для алертов
 ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
+# Флаг: отправлять ли алерт (чтобы не спамить)
+_alert_sent = False
+_last_alert_time: Optional[datetime] = None
+_ALERT_COOLDOWN_MINUTES = 30  # не чаще 1 алерта в 30 мин
+
 # Пороги для алертов
 MAX_SILENCE_MINUTES = 30  # Максимальное время молчания
 MAX_ERROR_RATE = 10  # Максимальное количество ошибок за час
@@ -76,10 +81,33 @@ class HealthChecker:
 
     async def check_and_alert(self):
         """Проверяет состояние и отправляет алерт админу при проблемах."""
+        global _alert_sent, _last_alert_time
+
         status = self.get_status()
 
         if status["healthy"]:
-            logger.debug("Health check: OK")
+            # Сбрасываем флаг алерта при восстановлении
+            if _alert_sent:
+                _alert_sent = False
+                logger.info("✅ Health check recovered")
+                if self.bot and self.admin_id:
+                    try:
+                        await self.bot.send_message(
+                            chat_id=self.admin_id,
+                            text="✅ <b>Bot Health Recovered</b>\n\nБот снова работает нормально.",
+                            parse_mode="HTML",
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send recovery alert: {e}")
+            return
+
+        # Проверяем cooldown (не спамим алертами)
+        now = datetime.now()
+        if (
+            _last_alert_time
+            and (now - _last_alert_time).total_seconds() < _ALERT_COOLDOWN_MINUTES * 60
+        ):
+            logger.debug(f"Health alert cooldown ({_ALERT_COOLDOWN_MINUTES} min)")
             return
 
         # Формируем сообщение об ошибке
@@ -87,19 +115,33 @@ class HealthChecker:
         for check_name, check_data in status["checks"].items():
             if not check_data.get("ok", True):
                 if check_name == "silence":
-                    issues.append(f"No publishes for {check_data['minutes']} min")
+                    issues.append(
+                        f"🔇 Молчание {check_data['minutes']:.0f} мин (порог {check_data['threshold']})"
+                    )
                 elif check_name == "errors":
-                    issues.append(f"{check_data['count']} errors in last hour")
+                    issues.append(
+                        f"❌ Ошибок: {check_data['count']} за час (порог {check_data['threshold']})"
+                    )
 
-        message = f"🚨 <b>Bot Health Alert</b>\n\n" + "\n".join(f"• {issue}" for issue in issues)
+        message = (
+            f"🚨 <b>ALERT: Bot Health Check Failed</b>\n\n"
+            + "\n".join(f"• {issue}" for issue in issues)
+            + "\n\n<i>Следующий алерт не раньше чем через 30 мин.</i>"
+        )
         logger.warning(f"Health check failed: {issues}")
 
         # Отправляем админу
         if self.bot and self.admin_id:
             try:
                 await self.bot.send_message(chat_id=self.admin_id, text=message, parse_mode="HTML")
+                _alert_sent = True
+                _last_alert_time = now
             except Exception as e:
                 logger.error(f"Failed to send health alert: {e}")
+        else:
+            logger.warning(
+                f"Cannot send alert: bot={self.bot is not None}, admin_id={self.admin_id}"
+            )
 
 
 # Глобальный экземпляр
