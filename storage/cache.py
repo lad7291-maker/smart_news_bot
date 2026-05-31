@@ -62,6 +62,23 @@ class CacheManager:
             )
         """
         )
+        # FEAT-022: Состояние health-check алертов (переживает перезапуск)
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS health_alerts (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                alert_sent INTEGER DEFAULT 0,
+                last_alert_time TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        cursor.execute(
+            """
+            INSERT OR IGNORE INTO health_alerts (id, alert_sent, last_alert_time)
+            VALUES (1, 0, NULL)
+        """
+        )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_link_hash ON processed_links(link_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON processed_links(status)")
         self.conn.commit()
@@ -446,6 +463,48 @@ class CacheManager:
             return True
         except sqlite3.Error as e:
             logger.error(f"Ошибка при сохранении предпочтений: {e}")
+            return False
+
+    # === FEAT-022: Методы для health-check алертов (переживают перезапуск) ===
+
+    def get_health_alert_state(self) -> Dict[str, Any]:
+        """Возвращает состояние алертов из БД."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT alert_sent, last_alert_time FROM health_alerts WHERE id = 1")
+            row = cursor.fetchone()
+            if row:
+                from datetime import datetime
+
+                last_time = row["last_alert_time"]
+                if last_time:
+                    last_time = datetime.fromisoformat(last_time)
+                return {
+                    "alert_sent": bool(row["alert_sent"]),
+                    "last_alert_time": last_time,
+                }
+            return {"alert_sent": False, "last_alert_time": None}
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при чтении состояния алертов: {e}")
+            return {"alert_sent": False, "last_alert_time": None}
+
+    def set_health_alert_state(self, alert_sent: bool, last_alert_time: Optional[datetime]) -> bool:
+        """Сохраняет состояние алертов в БД."""
+        try:
+            cursor = self.conn.cursor()
+            time_str = last_alert_time.isoformat() if last_alert_time else None
+            cursor.execute(
+                """
+                UPDATE health_alerts
+                SET alert_sent = ?, last_alert_time = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+            """,
+                (1 if alert_sent else 0, time_str),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при сохранении состояния алертов: {e}")
             return False
 
     def close(self):

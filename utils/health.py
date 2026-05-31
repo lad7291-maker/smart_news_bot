@@ -1,6 +1,7 @@
 """
 Модуль health-check для Smart News Bot.
 Проверяет жизнеспособность бота и отправляет алерты админу.
+FEAT-022: Состояние алертов хранится в SQLite — переживает перезапуск.
 """
 
 import asyncio
@@ -13,9 +14,6 @@ from utils.logger import logger
 # ID администратора для алертов
 ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
-# Флаг: отправлять ли алерт (чтобы не спамить)
-_alert_sent = False
-_last_alert_time: Optional[datetime] = None
 _ALERT_COOLDOWN_MINUTES = 30  # не чаще 1 алерта в 30 мин
 
 # Пороги для алертов
@@ -80,15 +78,20 @@ class HealthChecker:
         return status
 
     async def check_and_alert(self):
-        """Проверяет состояние и отправляет алерт админу при проблемах."""
-        global _alert_sent, _last_alert_time
+        """Проверяет состояние и отправляет алерт админу при проблемах.
+        FEAT-022: Состояние алертов хранится в SQLite — переживает перезапуск.
+        """
+        from storage.cache import cache_manager
 
         status = self.get_status()
+        alert_state = cache_manager.get_health_alert_state()
+        alert_sent = alert_state["alert_sent"]
+        last_alert_time = alert_state["last_alert_time"]
 
         if status["healthy"]:
             # Сбрасываем флаг алерта при восстановлении
-            if _alert_sent:
-                _alert_sent = False
+            if alert_sent:
+                cache_manager.set_health_alert_state(False, None)
                 logger.info("✅ Health check recovered")
                 if self.bot and self.admin_id:
                     try:
@@ -104,8 +107,8 @@ class HealthChecker:
         # Проверяем cooldown (не спамим алертами)
         now = datetime.now()
         if (
-            _last_alert_time
-            and (now - _last_alert_time).total_seconds() < _ALERT_COOLDOWN_MINUTES * 60
+            last_alert_time
+            and (now - last_alert_time).total_seconds() < _ALERT_COOLDOWN_MINUTES * 60
         ):
             logger.debug(f"Health alert cooldown ({_ALERT_COOLDOWN_MINUTES} min)")
             return
@@ -126,7 +129,7 @@ class HealthChecker:
         message = (
             f"🚨 <b>ALERT: Bot Health Check Failed</b>\n\n"
             + "\n".join(f"• {issue}" for issue in issues)
-            + "\n\n<i>Следующий алерт не раньше чем через 30 мин.</i>"
+            + f"\n\n<i>Следующий алерт не раньше чем через {_ALERT_COOLDOWN_MINUTES} мин.</i>"
         )
         logger.warning(f"Health check failed: {issues}")
 
@@ -134,8 +137,7 @@ class HealthChecker:
         if self.bot and self.admin_id:
             try:
                 await self.bot.send_message(chat_id=self.admin_id, text=message, parse_mode="HTML")
-                _alert_sent = True
-                _last_alert_time = now
+                cache_manager.set_health_alert_state(True, now)
             except Exception as e:
                 logger.error(f"Failed to send health alert: {e}")
         else:
