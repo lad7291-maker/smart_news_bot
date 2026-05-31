@@ -3,8 +3,11 @@
 FEAT-001: Проверка, что yellow-новости не теряются массово.
 FEAT-012: Покрытие логики should_publish / get_delay_seconds.
 """
-import pytest
+
 from datetime import datetime
+
+import pytest
+
 from utils import publish_policy
 
 
@@ -63,7 +66,8 @@ class TestPublishPolicy:
         FEAT-001: Симуляция сбора новостей.
         Из смеси red/orange/yellow должно быть опубликовано >50%.
         """
-        from utils.publish_policy import should_publish, get_publish_level
+        from utils.publish_policy import get_publish_level, should_publish
+
         articles = [
             {"score": 10, "title": "A"},
             {"score": 9, "title": "B"},

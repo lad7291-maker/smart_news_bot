@@ -2,10 +2,13 @@
 Тесты для AI-провайдера.
 BUG-005: Проверка, что get_leaders_context() не дублируется.
 """
+
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
-from ai_core.routerai_provider import RouterAIProvider
+
 from ai_core.ai_provider import AIProvider
+from ai_core.routerai_provider import RouterAIProvider
 
 
 class TestAIProvider:
@@ -27,8 +30,9 @@ class TestAIProvider:
         BUG-005: analyze_news должен вызывать get_leaders_context() ровно 1 раз.
         """
         provider = RouterAIProvider(api_key="fake-key", model="deepseek/deepseek-chat")
-        with patch.object(provider, "_make_request") as mock_req, \
-             patch("ai_core.routerai_provider.get_leaders_context") as mock_ctx:
+        with patch.object(provider, "_make_request") as mock_req, patch(
+            "ai_core.routerai_provider.get_leaders_context"
+        ) as mock_ctx:
             mock_ctx.return_value = "USA: President - Test"
             mock_req.return_value = {
                 "choices": [{"message": {"content": "Test analysis"}}],
@@ -36,10 +40,11 @@ class TestAIProvider:
             }
             # Запускаем корутину
             import asyncio
+
             asyncio.run(provider.analyze_news("Title", "Summary", 5))
-            assert mock_ctx.call_count == 1, (
-                f"BUG-005: get_leaders_context() called {mock_ctx.call_count} times, expected 1"
-            )
+            assert (
+                mock_ctx.call_count == 1
+            ), f"BUG-005: get_leaders_context() called {mock_ctx.call_count} times, expected 1"
 
     def test_fallback_to_yandex_when_routerai_fails(self):
         """При недоступности RouterAI должен использоваться Yandex."""
@@ -52,5 +57,6 @@ class TestAIProvider:
             with patch.object(provider, "_yandex_analyze") as mock_yandex:
                 mock_yandex.return_value = MagicMock(text="Yandex analysis", provider="yandex")
                 import asyncio
+
                 result = asyncio.run(provider.analyze_news("Title", "Summary"))
                 assert result.provider == "yandex"

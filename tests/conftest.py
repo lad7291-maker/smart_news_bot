@@ -1,12 +1,14 @@
 """
 Фикстуры для тестов Smart News Bot.
 """
+
 import asyncio
-import pytest
+import os
 import sqlite3
 import tempfile
-import os
 from pathlib import Path
+
+import pytest
 
 
 @pytest.fixture(scope="session")
@@ -27,6 +29,7 @@ def tmp_db_path(tmp_path):
 def mock_article():
     """Типовая новость для тестов."""
     from datetime import datetime
+
     return {
         "title": "Bitcoin вырос после решения SEC",
         "link": "https://example.com/news/1",
@@ -42,6 +45,7 @@ def mock_article():
 def mock_articles_list():
     """Список новостей для тестов дедупликации."""
     from datetime import datetime
+
     base = datetime.now()
     return [
         {

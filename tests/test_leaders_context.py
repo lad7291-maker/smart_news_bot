@@ -1,5 +1,7 @@
 import pytest
+
 from ai_core.world_leaders_context import ALL_LEADERS, get_leaders_context
+
 
 class TestLeadersContext:
     def test_context_is_not_empty(self):

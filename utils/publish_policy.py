@@ -3,10 +3,12 @@
 Реализует трёхуровневую систему скорости, тихие часы,
 rate limiting, антиспам по темам и адаптивные задержки.
 """
+
 import random
-import pytz
 from datetime import datetime, timedelta
-from typing import Optional, Tuple, Dict, Any
+from typing import Any, Dict, Optional, Tuple
+
+import pytz
 
 from utils.logger import logger
 
@@ -23,27 +25,37 @@ STORM_RED_THRESHOLD = 3  # сколько 🔴 за час включает ре
 
 # Задержки (секунды)
 DELAY_RED = 0
-DELAY_ORANGE_QUIET = 300       # 5 мин
+DELAY_ORANGE_QUIET = 300  # 5 мин
 DELAY_ORANGE_NORMAL_MIN = 900  # 15 мин
-DELAY_ORANGE_NORMAL_MAX = 1800 # 30 мин
-DELAY_YELLOW_MIN = 7200        # 2 часа
-DELAY_YELLOW_MAX = 14400       # 4 часа
+DELAY_ORANGE_NORMAL_MAX = 1800  # 30 мин
+DELAY_YELLOW_MIN = 7200  # 2 часа
+DELAY_YELLOW_MAX = 14400  # 4 часа
 
 # Кулдаун по темам (секунды)
-TOPIC_COOLDOWN_MIN = 2400      # 40 мин
-TOPIC_COOLDOWN_MAX = 3600      # 60 мин
+TOPIC_COOLDOWN_MIN = 2400  # 40 мин
+TOPIC_COOLDOWN_MAX = 3600  # 60 мин
 
 # Ключевые слова для кулдауна (персоны и горячие темы)
 TOPIC_KEYWORDS = [
-    "трамп", "trump",
-    "путин", "putin",
-    "байден", "biden",
-    "украина", "ukraine",
-    "иран", "iran",
-    "израиль", "israel",
-    "нато", "nato",
-    "китай", "china",
-    "евросоюз", "european union", "ec",
+    "трамп",
+    "trump",
+    "путин",
+    "putin",
+    "байден",
+    "biden",
+    "украина",
+    "ukraine",
+    "иран",
+    "iran",
+    "израиль",
+    "israel",
+    "нато",
+    "nato",
+    "китай",
+    "china",
+    "евросоюз",
+    "european union",
+    "ec",
 ]
 
 # История публикаций в памяти (score, level, title, source, timestamp)
@@ -59,13 +71,15 @@ def _cleanup_old_records():
 
 def record_publish(score: int, title: str, source: str):
     """Записывает факт публикации для статистики."""
-    _recent_publishes.append({
-        "score": score,
-        "level": get_publish_level(score),
-        "title": title,
-        "source": source,
-        "ts": datetime.now(),
-    })
+    _recent_publishes.append(
+        {
+            "score": score,
+            "level": get_publish_level(score),
+            "title": title,
+            "source": source,
+            "ts": datetime.now(),
+        }
+    )
     _cleanup_old_records()
 
 
@@ -181,7 +195,9 @@ def get_delay_seconds(
             # Откладываем до 07:00 утра МСК
             now = datetime.now(MSK)
             if now.hour >= QUIET_HOURS_START:
-                next_morning = now.replace(hour=QUIET_HOURS_END, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                next_morning = now.replace(
+                    hour=QUIET_HOURS_END, minute=0, second=0, microsecond=0
+                ) + timedelta(days=1)
             else:
                 next_morning = now.replace(hour=QUIET_HOURS_END, minute=0, second=0, microsecond=0)
             delay = int((next_morning - now).total_seconds())
@@ -230,9 +246,7 @@ def check_topic_cooldown(title: str, level: str) -> Tuple[bool, str, int]:
                 if keyword in rec["title"].lower():
                     remaining = int((rec["ts"] + cooldown_window - now).total_seconds())
                     if remaining > 0:
-                        logger.info(
-                            f"⏳ Кулдаун по теме '{keyword}': {remaining//60} мин"
-                        )
+                        logger.info(f"⏳ Кулдаун по теме '{keyword}': {remaining//60} мин")
                         return False, f"topic_cooldown_{keyword}", remaining
 
     return True, "no_cooldown", 0

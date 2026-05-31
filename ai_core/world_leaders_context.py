@@ -164,7 +164,7 @@ CHINA_ADMINISTRATION = {
         "title_ru": "President of China",
         "title_en": "President of China",
         "since": "2023-03-10",
-        "note": "Third term"
+        "note": "Third term",
     },
     "premier": {
         "name_ru": "Li Chang",
@@ -220,7 +220,7 @@ UK_ADMINISTRATION = {
         "title_ru": "Prime Minister of the United Kingdom",
         "title_en": "Prime Minister of the United Kingdom",
         "since": "2024-07-05",
-        "note": "Leader of the Labour Party"
+        "note": "Leader of the Labour Party",
     },
     "chancellor": {
         "name_ru": "Rachel Reeves",
@@ -249,7 +249,7 @@ INDIA_ADMINISTRATION = {
         "title_ru": "Prime Minister of India",
         "title_en": "Prime Minister of India",
         "since": "2014-05-26",
-        "note": "Third term"
+        "note": "Third term",
     },
     "foreign_minister": {
         "name_ru": "Subramaniam Jaishankar",
@@ -278,7 +278,7 @@ UKRAINE_ADMINISTRATION = {
         "title_ru": "President of Ukraine",
         "title_en": "President of Ukraine",
         "since": "2019-05-20",
-        "note": "Second term"
+        "note": "Second term",
     },
     "prime_minister": {
         "name_ru": "Denys Shmyhal",
@@ -313,7 +313,7 @@ ISRAEL_ADMINISTRATION = {
         "title_ru": "Prime Minister of Israel",
         "title_en": "Prime Minister of Israel",
         "since": "2022-12-29",
-        "note": "Sixth term"
+        "note": "Sixth term",
     },
     "defense_minister": {
         "name_ru": "Israel Katz",
@@ -348,7 +348,7 @@ JAPAN_ADMINISTRATION = {
         "title_ru": "Prime Minister of Japan",
         "title_en": "Prime Minister of Japan",
         "since": "2024-10-01",
-        "note": "Leader of the Liberal Democratic Party"
+        "note": "Leader of the Liberal Democratic Party",
     },
     "foreign_minister": {
         "name_ru": "Takeshi Iwaya",
@@ -377,7 +377,7 @@ BRASIL_ADMINISTRATION = {
         "title_ru": "President of Brazil",
         "title_en": "President of Brazil",
         "since": "2023-01-01",
-        "note": "Second term"
+        "note": "Second term",
     },
     "foreign_minister": {
         "name_ru": "Mauro Veira",
@@ -413,10 +413,11 @@ ALL_LEADERS = {
     "Brazil": BRASIL_ADMINISTRATION,
 }
 
+
 def get_leaders_context() -> str:
-    '''
+    """
     Generates a compact context string with all leaders for AI prompts.
-    '''
+    """
     parts = []
     for country, admin in ALL_LEADERS.items():
         parts.append(f"Country: {country}")

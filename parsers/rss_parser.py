@@ -3,10 +3,11 @@
 Использует feedparser для получения новостей из RSS-источников.
 """
 
-import feedparser
-from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
 import logging
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional
+
+import feedparser
 
 from config import config
 
@@ -39,7 +40,7 @@ class RSSParser:
             logger.debug(f"Загрузка RSS: {feed_url}")
             feed = feedparser.parse(feed_url)
 
-            if feed.get('bozo_exception', False):
+            if feed.get("bozo_exception", False):
                 logger.warning(f"Проблема при парсинге {feed_url}: {feed.bozo_exception}")
 
             for entry in feed.entries[:10]:  # Берём не более 10 записей
@@ -62,27 +63,28 @@ class RSSParser:
     def _extract_published_date(self, entry: Any) -> datetime:
         """Извлекает дату публикации из записи RSS."""
         # Пробуем разные поля, где может быть дата
-        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+        if hasattr(entry, "published_parsed") and entry.published_parsed:
             return datetime(*entry.published_parsed[:6])
-        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+        elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
             return datetime(*entry.updated_parsed[:6])
-        elif hasattr(entry, 'created_parsed') and entry.created_parsed:
+        elif hasattr(entry, "created_parsed") and entry.created_parsed:
             return datetime(*entry.created_parsed[:6])
         else:
             # Если даты нет, считаем текущее время (новость только что добавлена)
             return datetime.now()
 
-    def _build_article(self, entry: Any, source_tag: str, 
-                      published_time: datetime) -> Dict[str, Any]:
+    def _build_article(
+        self, entry: Any, source_tag: str, published_time: datetime
+    ) -> Dict[str, Any]:
         """Формирует структурированную запись о новости."""
         return {
-            'title': self._clean_text(entry.get('title', 'Без заголовка')),
-            'link': entry.get('link', ''),
-            'summary': self._clean_text(entry.get('summary', entry.get('description', ''))),
-            'source': source_tag,
-            'published': published_time,
-            'type': 'rss',
-            'source_url': entry.get('link', '')  # для обратной совместимости
+            "title": self._clean_text(entry.get("title", "Без заголовка")),
+            "link": entry.get("link", ""),
+            "summary": self._clean_text(entry.get("summary", entry.get("description", ""))),
+            "source": source_tag,
+            "published": published_time,
+            "type": "rss",
+            "source_url": entry.get("link", ""),  # для обратной совместимости
         }
 
     def _clean_text(self, text: str) -> str:
@@ -91,9 +93,10 @@ class RSSParser:
             return ""
         # Убираем HTML-теги (простейшая очистка)
         import re
-        text = re.sub(r'<[^>]+>', '', text)
+
+        text = re.sub(r"<[^>]+>", "", text)
         # Убираем лишние пробелы и переносы строк
-        text = ' '.join(text.split())
+        text = " ".join(text.split())
         return text[:500]  # Ограничиваем длину
 
 
@@ -108,19 +111,20 @@ if __name__ == "__main__":
     # Простой тест при запуске файла напрямую
     import sys
     from pathlib import Path
+
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from utils.logger import setup_logging
 
     setup_logging()
 
     test_sources = [
-        {'url': 'https://habr.com/ru/rss/hub/ai/?fl=ru', 'tag': 'AI'},
-        {'url': 'https://www.coindesk.com/arc/outboundfeeds/rss/', 'tag': 'Crypto'}
+        {"url": "https://habr.com/ru/rss/hub/ai/?fl=ru", "tag": "AI"},
+        {"url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "tag": "Crypto"},
     ]
 
     parser = RSSParser(hours_limit=168)  # последние 7 дней для теста
     for source in test_sources:
-        news = parser.parse_feed(source['url'], source['tag'])
+        news = parser.parse_feed(source["url"], source["tag"])
         print(f"\n🔹 {source['tag']}: {len(news)} новостей")
         for i, item in enumerate(news[:3], 1):
             print(f"   {i}. {item['title'][:80]}...")

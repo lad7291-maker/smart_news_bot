@@ -10,13 +10,14 @@ from pathlib import Path
 # Добавляем корневую папку в путь для импорта
 sys.path.insert(0, str(Path(__file__).parent))
 
-from utils.logger import setup_logging
-from storage.cache import cache_manager
-from parsers.rss_parser import RSSParser
-from telegram_bot.poster import send_multiple_news
 from config import config
+from parsers.rss_parser import RSSParser
+from storage.cache import cache_manager
+from telegram_bot.poster import send_multiple_news
+from utils.logger import setup_logging
 
 logger = setup_logging()
+
 
 async def main():
     logger.info("=" * 60)
@@ -34,16 +35,16 @@ async def main():
 
         for source in config.RSS_SOURCES:
             try:
-                news = parser.parse_feed(source['url'], source['tag'])
+                news = parser.parse_feed(source["url"], source["tag"])
                 # Фильтруем уже обработанные
-                fresh_news = [n for n in news if not cache_manager.is_processed(n['link'])]
+                fresh_news = [n for n in news if not cache_manager.is_processed(n["link"])]
                 all_news.extend(fresh_news)
             except Exception as e:
                 logger.warning(f"Ошибка при парсинге {source['tag']}: {e}")
                 continue
 
         # Сортируем по дате (свежие сверху)
-        all_news.sort(key=lambda x: x['published'], reverse=True)
+        all_news.sort(key=lambda x: x["published"], reverse=True)
         logger.info(f"📊 Найдено свежих новостей: {len(all_news)}")
 
         if not all_news:
@@ -56,10 +57,7 @@ async def main():
         # Помечаем как обрабатываемые (первые 3)
         for article in all_news[:3]:
             cache_manager.mark_processing(
-                article['link'],
-                article['type'],
-                article['source'],
-                article['title']
+                article["link"], article["type"], article["source"], article["title"]
             )
 
         # Отправляем посты
@@ -68,7 +66,7 @@ async def main():
 
         # Помечаем успешно отправленные
         for article in all_news[:sent]:
-            cache_manager.mark_processed(article['link'], success=True)
+            cache_manager.mark_processed(article["link"], success=True)
 
     except KeyboardInterrupt:
         logger.info("🛑 Приложение остановлено пользователем")
@@ -79,8 +77,9 @@ async def main():
         # --- Важное исправление: принудительно закрываем сессию бота ---
         try:
             from telegram_bot.core import bot
+
             bot_instance = bot
-            if bot_instance and hasattr(bot_instance, 'session'):
+            if bot_instance and hasattr(bot_instance, "session"):
                 await bot_instance.session.close()
                 logger.info("🔌 Сессия Telegram-бота закрыта")
         except Exception as e:
@@ -91,6 +90,7 @@ async def main():
         logger.info("📴 Все ресурсы освобождены")
 
     return 0
+
 
 if __name__ == "__main__":
     try:

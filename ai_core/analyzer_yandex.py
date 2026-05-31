@@ -1,11 +1,14 @@
 """
 YandexGPT fallback-провайдер (асинхронная версия).
 """
+
 import os
-import aiohttp
 from functools import lru_cache
-from utils.logger import logger
+
+import aiohttp
+
 from ai_core.world_leaders_context import get_leaders_context
+from utils.logger import logger
 
 YANDEX_API_KEY = os.getenv("YANDEX_API_KEY")
 YANDEX_FOLDER_ID = os.getenv("YANDEX_FOLDER_ID")
@@ -45,10 +48,7 @@ async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5)
 Текст: {summary[:700]}"""
 
     url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-    headers = {
-        "Authorization": f"Api-Key {YANDEX_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    headers = {"Authorization": f"Api-Key {YANDEX_API_KEY}", "Content-Type": "application/json"}
 
     # Пробуем модели по порядку
     models = ["yandexgpt", "yandexgpt-lite"]
@@ -65,15 +65,11 @@ async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5)
             )
             payload = {
                 "modelUri": f"gpt://{YANDEX_FOLDER_ID}/{model}",
-                "completionOptions": {
-                    "stream": False,
-                    "temperature": 0.3,
-                    "maxTokens": 400
-                },
+                "completionOptions": {"stream": False, "temperature": 0.3, "maxTokens": 400},
                 "messages": [
                     {"role": "system", "text": system_content},
-                    {"role": "user", "text": prompt}
-                ]
+                    {"role": "user", "text": prompt},
+                ],
             }
 
             session = aiohttp.ClientSession()
@@ -87,13 +83,13 @@ async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5)
             comment = result["result"]["alternatives"][0]["message"]["text"]
 
             # Очистка: убираем только запрещённые символы, разрешаем * и _
-            forbidden = ['#', '[', ']', '`', '~', '>']
+            forbidden = ["#", "[", "]", "`", "~", ">"]
             for ch in forbidden:
-                comment = comment.replace(ch, '')
+                comment = comment.replace(ch, "")
 
             # Убираем лишние пустые строки
-            lines = [line.strip() for line in comment.split('\n') if line.strip()]
-            result_text = '\n'.join(lines)
+            lines = [line.strip() for line in comment.split("\n") if line.strip()]
+            result_text = "\n".join(lines)
 
             logger.info(f"YandexGPT ({model}): {title[:40]}...")
             return result_text

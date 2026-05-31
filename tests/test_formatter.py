@@ -2,7 +2,9 @@
 Tests for telegram post formatter.
 FEAT-008: Check AI disclaimer presence.
 """
+
 import pytest
+
 from telegram_bot.formatter import format_news_post
 
 
@@ -41,5 +43,6 @@ class TestFormatter:
         }
         text = format_news_post(article)
         # Currently no disclaimer - this test documents the gap
-        assert "инвестиционной рекомендации" not in text, \
-            "FEAT-008: AI disclaimer not yet implemented"
+        assert (
+            "инвестиционной рекомендации" not in text
+        ), "FEAT-008: AI disclaimer not yet implemented"

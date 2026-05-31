@@ -2,10 +2,11 @@
 Модуль health-check для Smart News Bot.
 Проверяет жизнеспособность бота и отправляет алерты админу.
 """
+
 import asyncio
 import os
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 from utils.logger import logger
 
@@ -14,7 +15,7 @@ ADMIN_ID = int(os.getenv("ADMIN_TELEGRAM_ID", "0"))
 
 # Пороги для алертов
 MAX_SILENCE_MINUTES = 30  # Максимальное время молчания
-MAX_ERROR_RATE = 10       # Максимальное количество ошибок за час
+MAX_ERROR_RATE = 10  # Максимальное количество ошибок за час
 
 
 class HealthChecker:
@@ -46,7 +47,7 @@ class HealthChecker:
             "healthy": True,
             "last_publish": self.last_publish_time.isoformat() if self.last_publish_time else None,
             "errors_last_hour": self.error_count,
-            "checks": {}
+            "checks": {},
         }
 
         # Проверка: давно ли была публикация
@@ -55,7 +56,7 @@ class HealthChecker:
             status["checks"]["silence"] = {
                 "minutes": round(silence_minutes, 1),
                 "threshold": MAX_SILENCE_MINUTES,
-                "ok": silence_minutes < MAX_SILENCE_MINUTES
+                "ok": silence_minutes < MAX_SILENCE_MINUTES,
             }
             if not status["checks"]["silence"]["ok"]:
                 status["healthy"] = False
@@ -66,7 +67,7 @@ class HealthChecker:
         status["checks"]["errors"] = {
             "count": self.error_count,
             "threshold": MAX_ERROR_RATE,
-            "ok": self.error_count < MAX_ERROR_RATE
+            "ok": self.error_count < MAX_ERROR_RATE,
         }
         if not status["checks"]["errors"]["ok"]:
             status["healthy"] = False
@@ -96,11 +97,7 @@ class HealthChecker:
         # Отправляем админу
         if self.bot and self.admin_id:
             try:
-                await self.bot.send_message(
-                    chat_id=self.admin_id,
-                    text=message,
-                    parse_mode="HTML"
-                )
+                await self.bot.send_message(chat_id=self.admin_id, text=message, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Failed to send health alert: {e}")
 

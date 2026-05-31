@@ -2,9 +2,12 @@
 Тесты для модуля дедупликации новостей.
 BUG-003: Проверка, что timedelta не вызывает NameError.
 """
-import pytest
+
 from datetime import datetime
-from utils.deduplicator import deduplicate_articles, _title_similarity, _normalize_title
+
+import pytest
+
+from utils.deduplicator import _normalize_title, _title_similarity, deduplicate_articles
 
 
 class TestDeduplicator:
