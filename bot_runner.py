@@ -743,16 +743,103 @@ async def job_collect_news() -> None:
         logger.error(f"❌ Критическая ошибка в job_collect_news: {e}", exc_info=True)
 
 
-# === Команды Telegram ===
+# === FEAT-019: Inline-меню настроек ===
+# Предустановленные темы для быстрой подписки
+_PRESET_TOPICS = [
+    ("₿ Крипто", "крипто"),
+    ("🏛 Политика", "политика"),
+    ("💰 Экономика", "экономика"),
+    ("⚔️ Война", "война"),
+    ("🤖 Технологии", "технологии"),
+    ("🏦 Центробанки", "центробанк"),
+    ("🛢️ Нефть/Газ", "нефть"),
+    ("🚀 Космос", "космос"),
+]
+
+_PRESET_BLOCKED = [
+    ("🏀 Спорт", "спорт"),
+    ("🎬 Кино", "кино"),
+    ("🎵 Музыка", "музыка"),
+]
+
+
 def _build_start_keyboard() -> InlineKeyboardMarkup:
     """Inline-клавиатура для /start (FEAT-005)."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="📰 Собрать новости", callback_data="post_now")],
             [InlineKeyboardButton(text="📊 Статистика", callback_data="stats")],
+            [InlineKeyboardButton(text="⚙️ Мои настройки", callback_data="settings_menu")],
             [InlineKeyboardButton(text="❓ Помощь", callback_data="help")],
         ]
     )
+
+
+def _build_settings_keyboard(chat_id: str) -> InlineKeyboardMarkup:
+    """Главное меню настроек (FEAT-019)."""
+    prefs = cache_manager.get_user_prefs(chat_id)
+    preferred = set(prefs.get("preferred_topics", []))
+    blocked = set(prefs.get("blocked_topics", []))
+    min_score = prefs.get("min_score", 1)
+
+    kb = []
+    kb.append([InlineKeyboardButton(text="✅ Подписаться на тему ▼", callback_data="noop")])
+
+    # Темы для подписки (по 2 в ряд)
+    topic_rows = []
+    for label, topic in _PRESET_TOPICS:
+        icon = "✅" if topic in preferred else "⬜"
+        topic_rows.append(
+            InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"topic_toggle:{topic}")
+        )
+        if len(topic_rows) == 2:
+            kb.append(topic_rows)
+            topic_rows = []
+    if topic_rows:
+        kb.append(topic_rows)
+
+    kb.append([InlineKeyboardButton(text="🚫 Заблокировать тему ▼", callback_data="noop")])
+
+    block_rows = []
+    for label, topic in _PRESET_BLOCKED:
+        icon = "🚫" if topic in blocked else "⬜"
+        block_rows.append(
+            InlineKeyboardButton(text=f"{icon} {label}", callback_data=f"block_toggle:{topic}")
+        )
+        if len(block_rows) == 2:
+            kb.append(block_rows)
+            block_rows = []
+    if block_rows:
+        kb.append(block_rows)
+
+    kb.append(
+        [
+            InlineKeyboardButton(
+                text=f"📊 Минимальный балл: {min_score}", callback_data="minscore_menu"
+            )
+        ]
+    )
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="start_menu")])
+
+    return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def _build_minscore_keyboard(current: int) -> InlineKeyboardMarkup:
+    """Меню выбора минимального балла."""
+    kb = []
+    row = []
+    for score in range(1, 11):
+        icon = "●" if score == current else "○"
+        row.append(
+            InlineKeyboardButton(text=f"{icon} {score}", callback_data=f"minscore_set:{score}")
+        )
+        if len(row) == 5:
+            kb.append(row)
+            row = []
+    if row:
+        kb.append(row)
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="settings_menu")])
+    return InlineKeyboardMarkup(inline_keyboard=kb)
 
 
 @dp.message(Command("start"))
@@ -973,7 +1060,7 @@ async def cmd_minscore(message: types.Message) -> None:
     )
 
 
-# === Callback-обработчики inline-клавиатуры (FEAT-005) ===
+# === Callback-обработчики inline-клавиатуры (FEAT-005 + FEAT-019) ===
 @dp.callback_query(F.data == "post_now")
 async def cb_post_now(callback: types.CallbackQuery) -> None:
     await callback.answer("Запускаю сбор...")
@@ -1009,9 +1096,122 @@ async def cb_help(callback: types.CallbackQuery) -> None:
         f"🔴 8–10 баллов → {SCORE_DELAYS['high']}с\n"
         f"🟠 5–7 баллов → {SCORE_DELAYS['medium']}с\n"
         f"🟢 1–4 балла → {SCORE_DELAYS['low']}с\n\n"
+        "*Основные команды:*\n"
         "*/post_now* — внеочередной сбор\n"
         "*/stats* — статистика\n"
+        "*/settings* — настройки (темы, блокировки, балл)\n"
         "*/help* — помощь"
+    )
+
+
+# === FEAT-019: Callback-обработчики меню настроек ===
+@dp.callback_query(F.data == "start_menu")
+async def cb_start_menu(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.edit_text(
+        "🤖 *Smart News Bot — 10‑балльная система*\n"
+        "Собирает мировые новости, переводит и оценивает значимость.\n\n"
+        f"⏱ Интервал сбора: {PUBLISH_INTERVAL_MINUTES} мин.\n"
+        f"🔴 8–10 баллов → {SCORE_DELAYS['high']}с\n"
+        f"🟠 5–7 баллов → {SCORE_DELAYS['medium']}с\n"
+        f"🟢 1–4 балла → {SCORE_DELAYS['low']}с\n\n"
+        "Или используй кнопки ниже:",
+        reply_markup=_build_start_keyboard(),
+    )
+
+
+@dp.callback_query(F.data == "settings_menu")
+async def cb_settings_menu(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    chat_id = str(callback.message.chat.id)
+    prefs = cache_manager.get_user_prefs(chat_id)
+    preferred = prefs.get("preferred_topics", [])
+    blocked = prefs.get("blocked_topics", [])
+    min_score = prefs.get("min_score", 1)
+
+    lines = ["⚙️ *Настройки персонализации*\n"]
+    if preferred:
+        lines.append(f"✅ Подписки: {', '.join(preferred)}")
+    if blocked:
+        lines.append(f"🚫 Блокировки: {', '.join(blocked)}")
+    lines.append(f"📊 Минимальный балл: {min_score}")
+    lines.append("\nНажми на кнопки ниже, чтобы изменить:")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=_build_settings_keyboard(chat_id),
+    )
+
+
+@dp.callback_query(F.data.startswith("topic_toggle:"))
+async def cb_topic_toggle(callback: types.CallbackQuery) -> None:
+    chat_id = str(callback.message.chat.id)
+    topic = callback.data.split(":", 1)[1]
+    prefs = cache_manager.get_user_prefs(chat_id)
+    preferred = prefs.get("preferred_topics", [])
+
+    if topic in preferred:
+        preferred.remove(topic)
+        await callback.answer(f"❌ Отписались от «{topic}»")
+    else:
+        preferred.append(topic)
+        await callback.answer(f"✅ Подписались на «{topic}»")
+
+    cache_manager.set_user_prefs(chat_id, preferred_topics=preferred)
+    await callback.message.edit_reply_markup(reply_markup=_build_settings_keyboard(chat_id))
+
+
+@dp.callback_query(F.data.startswith("block_toggle:"))
+async def cb_block_toggle(callback: types.CallbackQuery) -> None:
+    chat_id = str(callback.message.chat.id)
+    topic = callback.data.split(":", 1)[1]
+    prefs = cache_manager.get_user_prefs(chat_id)
+    blocked = prefs.get("blocked_topics", [])
+
+    if topic in blocked:
+        blocked.remove(topic)
+        await callback.answer(f"✅ Разблокировали «{topic}»")
+    else:
+        blocked.append(topic)
+        await callback.answer(f"🚫 Заблокировали «{topic}»")
+
+    cache_manager.set_user_prefs(chat_id, blocked_topics=blocked)
+    await callback.message.edit_reply_markup(reply_markup=_build_settings_keyboard(chat_id))
+
+
+@dp.callback_query(F.data == "minscore_menu")
+async def cb_minscore_menu(callback: types.CallbackQuery) -> None:
+    await callback.answer()
+    chat_id = str(callback.message.chat.id)
+    prefs = cache_manager.get_user_prefs(chat_id)
+    current = prefs.get("min_score", 1)
+
+    await callback.message.edit_text(
+        f"📊 *Минимальный балл новостей*\n\n"
+        f"Сейчас: {current}\n\n"
+        "Выбери минимальный балл (1 — все новости, 10 — только самые важные):",
+        reply_markup=_build_minscore_keyboard(current),
+    )
+
+
+@dp.callback_query(F.data.startswith("minscore_set:"))
+async def cb_minscore_set(callback: types.CallbackQuery) -> None:
+    chat_id = str(callback.message.chat.id)
+    score = int(callback.data.split(":", 1)[1])
+    cache_manager.set_user_prefs(chat_id, min_score=score)
+    await callback.answer(f"📊 Минимальный балл: {score}")
+    await cb_minscore_menu(callback)
+
+
+@dp.message(Command("settings"))
+async def cmd_settings(message: types.Message) -> None:
+    """Открыть меню настроек (FEAT-019)."""
+    chat_id = str(message.chat.id)
+    await message.answer(
+        "⚙️ *Настройки персонализации*\n\n"
+        "Здесь можно выбрать интересующие темы, заблокировать нежелательные "
+        "и установить минимальный балл для новостей.",
+        reply_markup=_build_settings_keyboard(chat_id),
     )
 
 
