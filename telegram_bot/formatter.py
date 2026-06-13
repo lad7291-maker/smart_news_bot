@@ -719,6 +719,18 @@ def format_news_post(article):
     link = article.get("link", "")
     source = _escape_html(article.get("source", "News"))
     ai_comment = article.get("ai_comment", "").strip()
+    score = article.get("score", 0)
+
+    # Иконка важности по score
+    importance_emoji = ""
+    if score >= 9:
+        importance_emoji = "🔥 "
+    elif score >= 7:
+        importance_emoji = "⚠️ "
+    elif score >= 5:
+        importance_emoji = "📊 "
+    else:
+        importance_emoji = "📌 "
 
     summary_block = ""
     if summary:
@@ -769,11 +781,13 @@ def format_news_post(article):
     closer_raw = __import__("random").choice(closers)
     closer = _escape_html(closer_raw) if closer_raw else ""
 
-    message = f"""{emoji} <b>{title}</b>
+    message = f"""{importance_emoji}{emoji} <b>{title}</b>
 
 {summary_block}{lead}{ai_clean}
 {quote_block}{closer}
 
 🔗 <a href="{link}">Читать полностью</a>
-🏷 #{source} #новости"""
+📰 <i>— {source}</i>
+
+👉 <a href="https://t.me/SmartNewsAI">SmartNewsAI — подписаться</a>"""
     return message.strip()
