@@ -32,3 +32,20 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Бэкапы (Git сам хранит историю, бэкапы не нужны)
+.backup_*/
+*.bak*
+*.tmp
+
+# Кэши изображений (генерируются автоматически)
+image_cache/
+screenshot_cache/
+
+# Видео и медиа (большие файлы)
+assets/*.mp4
+assets/*.mov
+
+# БД SQLite (wal/shm генерируются автоматически)
+*.db-shm
+*.db-wal
