@@ -71,6 +71,8 @@ _OG_BAD_PATTERNS = {
     "rt.com/static/blocks/og-img/",
     "interfax.ru/aspimg/",  # Interfax OG — соц-карточка с логотипом и заголовком
     "interfax.com/aspimg/",
+    "flagcdn.com",  # Флаги стран — не релевантные фото
+    "cryptologos.cc",  # Логотипы крипто — не релевантные фото
 }
 
 # Домены с хорошими OG
