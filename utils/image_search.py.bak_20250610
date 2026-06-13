@@ -1,0 +1,344 @@
+"""
+Модуль поиска изображений к новостям — гибридный подход.
+
+Источники (по приоритету):
+1. RSS-нативные: enclosure, media:content, media:thumbnail (парсятся в parsers.image_extractor)
+2. Первое фото из HTML статьи (article img)
+3. Open Graph: og:image из HTML статьи (парсятся в parsers.image_extractor)
+4. SearXNG self-hosted: поиск по ключевым словам из новости
+5. LLM Image Judge: финальная проверка сомнительных кандидатов (score 30-50)
+6. Fallback: флаг/логотип источника (utils.image_relevance_checker)
+
+DuckDuckGo удалён — нестабильный, часто банит.
+"""
+
+import time
+from typing import List, Optional, Set
+import io
+
+import httpx
+import imagehash
+from PIL import Image
+
+from ai_core.image_judge import ImageCandidate, image_judge
+from utils.image_relevance_checker import get_fallback_image_url
+from utils.logger import logger
+from utils.metrics import collector
+from utils.searxng_client import find_best_image as searxng_find_best_image
+from utils.stock_image_providers import find_best_stock_image
+from utils.image_relevance_checker import get_fallback_image_url
+from utils.logger import logger
+from utils.metrics import collector
+from utils.searxng_client import find_best_image as searxng_find_best_image
+
+
+# Дедупликация: последние использованные изображения (не более 50)
+_recent_images: List[str] = []
+_MAX_RECENT_IMAGES = 50
+
+# Perceptual hash дедупликация
+_recent_hashes: List[str] = []
+_MAX_RECENT_HASHES = 50
+
+
+def _is_recently_used(url: str) -> bool:
+    """Проверяет, использовалось ли изображение недавно."""
+    return url in _recent_images
+
+
+def _mark_image_used(url: str) -> None:
+    """Отмечает изображение как использованное."""
+    global _recent_images
+    if url not in _recent_images:
+        _recent_images.append(url)
+        if len(_recent_images) > _MAX_RECENT_IMAGES:
+            _recent_images = _recent_images[-_MAX_RECENT_IMAGES:]
+
+
+async def _get_image_hash(url: str) -> Optional[str]:
+    """Вычисляет perceptual hash (average_hash) изображения."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return None
+            content = resp.content
+            if len(content) < 2048:
+                return None
+            img = Image.open(io.BytesIO(content))
+            img.load()
+            return str(imagehash.average_hash(img))
+    except Exception:
+        return None
+
+
+def _is_similar_hash(img_hash: Optional[str]) -> bool:
+    """Проверяет, есть ли похожий хеш в недавно использованных."""
+    if not img_hash:
+        return False
+    for recent_hash in _recent_hashes:
+        try:
+            diff = imagehash.hex_to_hash(img_hash) - imagehash.hex_to_hash(recent_hash)
+            if diff <= 8:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def _mark_hash_used(img_hash: Optional[str]) -> None:
+    """Отмечает хеш как использованный."""
+    global _recent_hashes
+    if not img_hash:
+        return
+    if img_hash not in _recent_hashes:
+        _recent_hashes.append(img_hash)
+        if len(_recent_hashes) > _MAX_RECENT_HASHES:
+            _recent_hashes = _recent_hashes[-_MAX_RECENT_HASHES:]
+
+
+async def _validate_image(url: str) -> tuple[bool, Optional[str]]:
+    """Проверяет изображение (не битое, не пустое, не слишком темное) и возвращает hash."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+            resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+            if resp.status_code != 200:
+                return False, None
+            content = resp.content
+            if len(content) < 2048:
+                return False, None
+            img = Image.open(io.BytesIO(content))
+            img.load()
+            if img.mode in ('RGB', 'RGBA'):
+                gray = img.convert('L')
+                pixels = list(gray.getdata())
+                avg_brightness = sum(pixels) / len(pixels)
+                if avg_brightness < 10 or avg_brightness > 245:
+                    logger.debug(f"Image too dark/bright: {url[:60]}")
+                    return False, None
+            img_hash = str(imagehash.average_hash(img))
+            return True, img_hash
+    except Exception as e:
+        logger.debug(f"Image validation failed: {url[:60]}: {e}")
+        return False, None
+
+
+async def _try_return(url: str) -> Optional[str]:
+    """Проверяет URL и возвращает, если валидно и не дубль."""
+    if not url:
+        return None
+    if _is_recently_used(url):
+        return None
+    valid, img_hash = await _validate_image(url)
+    if not valid:
+        return None
+    if _is_similar_hash(img_hash):
+        logger.debug(f"Similar hash detected, skipping: {url[:60]}...")
+        return None
+    _mark_image_used(url)
+    _mark_hash_used(img_hash)
+    return url
+
+
+# Пороги для гибридного подхода (обновлённые)
+_HIGH_CONFIDENCE_THRESHOLD = 65   # >= 65 — публикуем сразу, без LLM
+_UNCERTAIN_THRESHOLD = 50         # 50-65 — спорный, LLM с 1 кандидатом
+_LOW_CONFIDENCE_THRESHOLD = 30    # 30-50 — формируем список, LLM с несколькими
+# < 30 — отбрасываем, ищем через SearXNG
+
+
+async def find_news_image(
+    title: str,
+    source: str,
+    summary: str = "",
+    existing_candidates: Optional[List[ImageCandidate]] = None,
+) -> Optional[str]:
+    """
+    Ищет изображение для новости через гибридный подход.
+
+    Args:
+        title: Заголовок новости
+        source: Тег источника
+        summary: Краткое содержание
+        existing_candidates: Уже собранные кандидаты из RSS/OG/HTML
+
+    Returns:
+        URL изображения или None
+    """
+    start = time.time()
+    llm_cost = 0.0
+
+    try:
+        candidates = existing_candidates or []
+
+        # Если нет кандидатов от RSS/OG — пробуем SearXNG
+        if not candidates:
+            try:
+                searxng_result = await searxng_find_best_image(title, summary, max_results=5)
+                if searxng_result:
+                    # Всегда проверяем SearXNG-результат через LLM judge
+                    searxng_candidate = ImageCandidate(
+                        url=searxng_result,
+                        score=45,
+                        source="searxng",
+                    )
+                    try:
+                        result = await image_judge.judge(title, summary, [searxng_candidate])
+                        llm_cost = result.cost_usd
+                        if result.selected_url and result.score > 30:
+                            logger.info(f"🤖 LLM подтвердил SearXNG (score={result.score}): {result.selected_url[:60]}...")
+                            return result.selected_url
+                        else:
+                            logger.info(f"🤖 LLM отказался от SearXNG: {result.reason}")
+                    except Exception as e:
+                        logger.warning(f"LLM judge failed for SearXNG: {e}")
+            except Exception as e:
+                logger.debug(f"SearXNG search failed: {e}")
+
+        # Если есть кандидаты — применяем гибридный подход
+        if candidates:
+            # Фильтруем по score
+            high_confidence = [c for c in candidates if c.score >= _HIGH_CONFIDENCE_THRESHOLD]
+            uncertain = [c for c in candidates if _UNCERTAIN_THRESHOLD <= c.score < _HIGH_CONFIDENCE_THRESHOLD]
+            low_confidence = [c for c in candidates if _LOW_CONFIDENCE_THRESHOLD <= c.score < _UNCERTAIN_THRESHOLD]
+            rejected = [c for c in candidates if c.score < _LOW_CONFIDENCE_THRESHOLD]
+
+            logger.debug(
+                f"Image candidates: {len(high_confidence)} high (>=65), "
+                f"{len(uncertain)} uncertain (50-64), "
+                f"{len(low_confidence)} low (30-49), "
+                f"{len(rejected)} rejected (<30)"
+            )
+
+            # 1. Высокая уверенность (>= 65) — сразу принимаем лучшего
+            if high_confidence:
+                best = max(high_confidence, key=lambda c: c.score)
+                if not _is_recently_used(best.url):
+                    logger.info(f"🖼 Высокая уверенность (score={best.score}): {best.url[:60]}...")
+                    return best.url
+                else:
+                    logger.info(f"🖼 Высокая уверенность, но недавно использовано: {best.url[:60]}...")
+
+            # 2. Спорный случай (50-64) — LLM с 1 кандидатом + альтернативы
+            if uncertain:
+                try:
+                    result = await image_judge.judge(title, summary, uncertain)
+                    llm_cost = result.cost_usd
+
+                    if result.selected_url and result.score > 30:
+                        if not _is_recently_used(result.selected_url):
+                            logger.info(
+                                f"🤖 LLM выбрал из спорных (score={result.score}): {result.selected_url[:60]}... "
+                                f"— {result.reason}"
+                            )
+                            return result.selected_url
+                        else:
+                            logger.info(f"🤖 LLM выбрал, но недавно использовано: {result.selected_url[:60]}...")
+                    else:
+                        logger.info(f"🤖 LLM отказался от спорных: {result.reason}")
+                except Exception as e:
+                    logger.warning(f"LLM judge failed for uncertain: {e}")
+
+            # 3. Низкая уверенность (30-49) — формируем список с SearXNG
+            if low_confidence:
+                # Ищем дополнительные кандидаты через SearXNG
+                try:
+                    searxng_result = await searxng_find_best_image(title, summary, max_results=3)
+                    if searxng_result:
+                        low_confidence.append(ImageCandidate(
+                            url=searxng_result,
+                            score=45,  # Средний score для SearXNG
+                            source="searxng",
+                        ))
+                except Exception as e:
+                    logger.debug(f"SearXNG дополнительный поиск не удался: {e}")
+
+                # Отправляем всех в LLM
+                try:
+                    result = await image_judge.judge(title, summary, low_confidence)
+                    llm_cost = result.cost_usd
+
+                    if result.selected_url and result.score > 30:
+                        if not _is_recently_used(result.selected_url):
+                            logger.info(
+                                f"🤖 LLM выбрал из низких (score={result.score}): {result.selected_url[:60]}... "
+                                f"— {result.reason}"
+                            )
+                            return result.selected_url
+                        else:
+                            logger.info(f"🤖 LLM выбрал, но недавно использовано: {result.selected_url[:60]}...")
+                    else:
+                        logger.info(f"🤖 LLM отказался от низких: {result.reason}")
+                except Exception as e:
+                    logger.warning(f"LLM judge failed for low confidence: {e}")
+
+            # 4. Если LLM отказался — берём лучшего из оставшихся >= 30
+            all_valid = [c for c in candidates if c.score >= _LOW_CONFIDENCE_THRESHOLD]
+            if all_valid:
+                best = max(all_valid, key=lambda c: c.score)
+                if not _is_recently_used(best.url):
+                    logger.info(f"🖼 Fallback кандидат (score={best.score}): {best.url[:60]}...")
+                    return best.url
+                else:
+                    logger.info(f"🖼 Fallback кандидат, но недавно использован: {best.url[:60]}...")
+                    for c in sorted(all_valid, key=lambda x: x.score, reverse=True)[1:]:
+                        if not _is_recently_used(c.url):
+                            logger.info(f"🖼 Fallback кандидат #2 (score={c.score}): {c.url[:60]}...")
+                            return c.url
+
+            # 5. Все отброшены — идём в SearXNG
+            logger.debug(f"Все {len(candidates)} кандидатов имеют score < {_LOW_CONFIDENCE_THRESHOLD}, ищем через SearXNG")
+
+        # SearXNG поиск — результаты тоже проверяем через LLM
+        try:
+            searxng_result = await searxng_find_best_image(title, summary, max_results=5)
+            if searxng_result:
+                # Отправляем SearXNG результат в LLM judge для финальной проверки
+                searxng_candidate = ImageCandidate(
+                    url=searxng_result,
+                    score=45,  # Средний score для SearXNG
+                    source="searxng",
+                )
+                try:
+                    result = await image_judge.judge(title, summary, [searxng_candidate])
+                    llm_cost = result.cost_usd
+
+                    if result.selected_url and result.score > 30:
+                        logger.info(
+                            f"🤖 LLM подтвердил SearXNG (score={result.score}): {result.selected_url[:60]}... "
+                            f"— {result.reason}"
+                        )
+                        return result.selected_url
+                    else:
+                        logger.info(f"🤖 LLM отказался от SearXNG: {result.reason}")
+                except Exception as e:
+                    logger.warning(f"LLM judge failed for SearXNG: {e}")
+        except Exception as e:
+            logger.debug(f"SearXNG search failed: {e}")
+
+        # Stock images fallback (после SearXNG)
+        try:
+            stock_url = await find_best_stock_image(title, summary)
+            if stock_url:
+                checked = await _try_return(stock_url)
+                if checked:
+                    logger.info(f"🖼 Stock fallback: {checked[:60]}...")
+                    return checked
+        except Exception as e:
+            logger.debug(f"Stock image search failed: {e}")
+
+        # Fallback
+        fallback_url = get_fallback_image_url(source)
+        if fallback_url:
+            checked = await _try_return(fallback_url)
+            if checked:
+                logger.info(f"🔄 Fallback-изображение для {source}: {checked[:60]}...")
+                return checked
+
+        logger.debug(f"🚫 Изображение не найдено для: {title[:60]}...")
+        return None
+    finally:
+        collector.record_latency_from("image_search_latency_ms", start)
+        if llm_cost > 0:
+            # Логируем стоимость LLM
+            logger.debug(f"🤖 LLM image judge cost: ${llm_cost:.5f}")

@@ -85,6 +85,7 @@ class RSSParser:
             "published": published_time,
             "type": "rss",
             "source_url": entry.get("link", ""),  # для обратной совместимости
+            "rss_entry": entry,  # Сохраняем raw entry для извлечения изображений
         }
 
     def _clean_text(self, text: str) -> str:

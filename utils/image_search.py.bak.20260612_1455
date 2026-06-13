@@ -740,78 +740,71 @@ def _pick_best_image(results: List[Dict[str, Any]], title: str, query: str = "")
     return best[1]
 
 
-async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
+async def find_news_image(title: str, source: str, summary: str = "") -> Optional[str]:
     """
-    Оркестратор поиска изображения с приоритетом:
-    1. RSS/OG/HTML (extract_image_with_score)
-    2. Stock API (Pixabay/Pexels/Unsplash)
-    3. Скриншоты источников (Playwright)
-    4. SearXNG (self-hosted)
-    5. Fallback (флаг/логотип)
+    Асинхронно ищет изображение для новости с проверкой релевантности.
+
+    УЛУЧШЕННЫЙ АЛГОРИТМ (на основе анализа 97 постов SmartNews):
+    1. Поиск по заголовку (дешёво, без AI)
+    2. ПРОВЕРКА РЕЛЕВАНТНОСТИ найденного фото через image_relevance_checker
+    3. Если фото абсурдное — отбрасываем и пробуем AI-экстрактор
+    4. Если ничего не подходит — используем fallback (флаг/логотип источника)
 
     Возвращает URL изображения или None.
     """
-    from parsers.image_extractor import extract_image_with_score
-    from utils.image_relevance_checker import get_fallback_image_url
-    from utils.screenshot_generator import find_screenshot_image
-    from utils.searxng_client import find_best_image
-    from utils.stock_image_providers import find_best_stock_image
+    from utils.image_relevance_checker import check_image_relevance, get_fallback_image_url
 
-    title = article.get("title", "")
-    summary = article.get("summary", "")
-    source = article.get("source", "")
-    link = article.get("link", "") or article.get("url", "")
+    loop = asyncio.get_event_loop()
 
-    # === ШАГ 1: RSS/OG/HTML (наивысший приоритет) ===
-    if link:
-        try:
-            # Передаём rss_entry если есть (для извлечения RSS-нативных изображений)
-            entry = article.get("rss_entry")
-            result = await extract_image_with_score(entry, link, title)
-            if result:
-                url, score, src = result
-                if score >= 55:  # OG надёжный домен или хороший RSS
-                    logger.info(
-                        f"🖼 RSS/OG/HTML изображение (score={score}, source={src}): {url[:60]}..."
-                    )
-                    return url
-                elif score >= 40:  # Article img — приемлемо
-                    logger.info(f"🖼 Article image (score={score}): {url[:60]}...")
-                    return url
-        except Exception as e:
-            logger.debug(f"RSS/OG/HTML extraction failed: {e}")
+    # === ШАГ 1: Поиск по заголовку (без AI, дёшево) ===
+    query = _build_image_query(title, summary, source)
+    logger.debug(f"🔍 Поиск по заголовку: {query}")
+    results = await loop.run_in_executor(None, _search_images_sync, query, 10)
+    if results:
+        best = _pick_best_image(results, title, query)
+        if best:
+            # === НОВОЕ: Проверка релевантности ===
+            relevance = check_image_relevance(best, title, summary)
+            if relevance["is_relevant"] and not relevance["is_absurd"]:
+                logger.info(
+                    f"🖼 Найдено релевантное фото (score={relevance['score']}): {best[:60]}..."
+                )
+                return best
+            elif relevance["is_absurd"]:
+                logger.warning(
+                    f"🚫 Фото отклонено как абсурдное ({relevance['reason']}): {best[:60]}..."
+                )
+            else:
+                logger.debug(
+                    f"⚡ Фото нерелевантно (score={relevance['score']}), пробуем AI-keywords"
+                )
+        else:
+            logger.debug(f"⚡ Хороших фото не найдено по заголовку, пробуем AI-keywords")
 
-    # === ШАГ 2: Stock API ===
-    try:
-        stock_url = await find_best_stock_image(title, summary)
-        if stock_url:
-            logger.info(f"🖼 Stock изображение: {stock_url[:60]}...")
-            return stock_url
-    except Exception as e:
-        logger.debug(f"Stock search failed: {e}")
+    # === ШАГ 2: AI-экстрактор (если шаг 1 не дал релевантного результата) ===
+    ai_keywords = None
+    if summary and len(summary) > 20:
+        ai_keywords = await _extract_keywords_ai(title, summary)
 
-    # === ШАГ 3: Скриншоты источников (новый!) ===
-    try:
-        screenshot_url = await find_screenshot_image(article)
-        if screenshot_url:
-            logger.info(f"📸 Скриншот источника: {screenshot_url[:60]}...")
-            return screenshot_url
-    except Exception as e:
-        logger.debug(f"Screenshot search failed: {e}")
+    if ai_keywords:
+        query = f"{ai_keywords} news"
+        logger.debug(f"🔍 Поиск по AI-ключевым словам: {query}")
+        results = await loop.run_in_executor(None, _search_images_sync, query, 10)
+        if results:
+            best = _pick_best_image(results, title, query)
+            if best:
+                # Проверяем релевантность AI-результата
+                relevance = check_image_relevance(best, title, summary)
+                if relevance["is_relevant"] and not relevance["is_absurd"]:
+                    logger.info(f"🖼 Найдено релевантное фото через AI (score={relevance['score']})")
+                    return best
+                elif relevance["is_absurd"]:
+                    logger.warning(f"🚫 AI-фото отклонено как абсурдное: {relevance['reason']}")
 
-    # === ШАГ 4: SearXNG ===
-    try:
-        searx_url = await find_best_image(title, summary, max_results=10)
-        if searx_url:
-            logger.info(f"🖼 SearXNG изображение: {searx_url[:60]}...")
-            return searx_url
-    except Exception as e:
-        logger.debug(f"SearXNG search failed: {e}")
-
-    # === ШАГ 5: Fallback ===
+    # === ШАГ 3: Fallback — флаг или логотип источника ===
     fallback_url = get_fallback_image_url(source)
     if fallback_url:
-        logger.info(f"🔄 Fallback изображение для {source}: {fallback_url[:60]}...")
+        logger.info(f"🔄 Используем fallback-изображение для {source}: {fallback_url[:60]}...")
         return fallback_url
 
     logger.info(f"🚫 Изображение не найдено для: {title[:60]}...")

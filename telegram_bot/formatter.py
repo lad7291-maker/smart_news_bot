@@ -6,6 +6,16 @@
 - Эмодзи определяются по содержанию новости (тема/страна/сфера), а не по источнику.
 """
 
+import html
+
+
+def _escape_html(text: str) -> str:
+    """Экранирует спецсимволы HTML для безопасной вставки в Telegram HTML."""
+    if not text:
+        return ""
+    return html.escape(text)
+
+
 RU = chr(127479) + chr(127482)
 US = chr(127482) + chr(127480)
 CN = chr(127464) + chr(127475)
@@ -704,10 +714,10 @@ def _detect_topic_emoji(title, summary, source):
 
 
 def format_news_post(article):
-    title = article.get("title", "").strip()
+    title = _escape_html(article.get("title", "").strip())
     summary = article.get("summary", "") or ""
     link = article.get("link", "")
-    source = article.get("source", "News")
+    source = _escape_html(article.get("source", "News"))
     ai_comment = article.get("ai_comment", "").strip()
 
     summary_block = ""
@@ -716,9 +726,20 @@ def format_news_post(article):
         if len(summary) > 20:
             if len(summary) > 500:
                 summary = summary[:500].rstrip() + "…"
-            summary_block = f"📌 {summary}\n\n"
-
+            summary_block = f"📌 {_escape_html(summary)}\n\n"
     emoji = _detect_topic_emoji(title, summary, source)
+
+    # Извлекаем цитату из summary или ai_comment
+    quote_block = ""
+    try:
+        from utils.quote_extractor import format_quote_for_post, get_best_quote
+
+        combined_text = f"{summary} {ai_comment}"
+        quote_data = get_best_quote(combined_text)
+        if quote_data:
+            quote_block = format_quote_for_post(quote_data)
+    except Exception:
+        pass
 
     has_lead = __import__("random").random() > 0.3
     lead_phrases = ["", "", "", "Кратко: ", "Главное: ", "Суть: "]
@@ -726,6 +747,14 @@ def format_news_post(article):
 
     ai_clean = ai_comment.replace("📌 ", "").replace("📚 ", "").replace("✅ ", "")
     ai_clean = ai_clean.replace("**", "").replace("— ", "• ")
+    # Убираем HTML-экранирование из AI-комментария перед экранированием
+    ai_clean = (
+        ai_clean.replace("&quot;", '"')
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+    )
+    ai_clean = _escape_html(ai_clean)
 
     closers = [
         "",
@@ -737,13 +766,14 @@ def format_news_post(article):
         "Как считаете — это серьёзно?",
         "Похоже на правду?",
     ]
-    closer = __import__("random").choice(closers)
+    closer_raw = __import__("random").choice(closers)
+    closer = _escape_html(closer_raw) if closer_raw else ""
 
     message = f"""{emoji} <b>{title}</b>
 
-{lead}{ai_clean}
-{closer}
+{summary_block}{lead}{ai_clean}
+{quote_block}{closer}
 
-🔗 <a href=\"{link}\">Читать полностью</a>
+🔗 <a href="{link}">Читать полностью</a>
 🏷 #{source} #новости"""
     return message.strip()

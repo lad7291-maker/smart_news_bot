@@ -13,7 +13,7 @@ import atexit
 import logging
 import os
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from aiogram import Bot, Dispatcher, F, types
@@ -420,7 +420,10 @@ def detect_score(article: Dict[str, Any], user_prefs: Optional[Dict[str, Any]] =
     freshness = 0.0
     published = article.get("published")
     if published:
-        age = datetime.now() - published
+        # FIX: published может быть offset-naive — приводим к offset-aware
+        if published.tzinfo is None:
+            published = published.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - published
         hours = age.total_seconds() / 3600
         if hours < 6:
             freshness = 0.5
@@ -470,7 +473,7 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
             link_hash = cache_manager._generate_hash(link)
             scheduler.add_job(
                 publish_single_article,
-                trigger=DateTrigger(run_date=datetime.now() + timedelta(seconds=delay)),
+                trigger=DateTrigger(run_date=datetime.now(timezone.utc) + timedelta(seconds=delay)),
                 id=f"publish_{link_hash}",
                 args=[article],
                 replace_existing=True,
@@ -488,7 +491,9 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
         link_hash = cache_manager._generate_hash(link)
         scheduler.add_job(
             publish_single_article,
-            trigger=DateTrigger(run_date=datetime.now() + timedelta(seconds=cooldown_sec)),
+            trigger=DateTrigger(
+                run_date=datetime.now(timezone.utc) + timedelta(seconds=cooldown_sec)
+            ),
             id=f"publish_{link_hash}",
             args=[article],
             replace_existing=True,
@@ -507,11 +512,7 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
         ai_task = analyze_news(
             title=article.get("title", ""), summary=article.get("summary", ""), score=score
         )
-        image_task = find_news_image(
-            title=article.get("title", ""),
-            source=article.get("source", ""),
-            summary=article.get("summary", ""),
-        )
+        image_task = find_news_image(article)
         ai_comment, image_url = await asyncio.gather(ai_task, image_task)
 
         article["ai_comment"] = ai_comment
@@ -526,7 +527,7 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
                 article["image_source"] = "fallback"
                 logger.info(f"🔄 Используем fallback-изображение для {article.get('source', '')}")
 
-        await send_multiple_news([article], max_posts=1, delay=0)
+        await send_multiple_news(bot, config.TELEGRAM_CHANNEL_ID, [article], max_posts=1, delay=0)
 
         cache_manager.mark_processed(link, success=True)
         publish_policy.record_publish(score, article.get("title", ""), article.get("source", ""))
@@ -587,14 +588,14 @@ async def collect_from_source(source: Dict[str, Any]) -> List[Dict[str, Any]]:
 # === Получение времени последней запланированной публикации ===
 def get_last_scheduled_time() -> datetime:
     if scheduler is None:
-        return datetime.now()
+        return datetime.now(timezone.utc)
     jobs = scheduler.get_jobs()
     publish_jobs = [j for j in jobs if j.id.startswith("publish_") and j.next_run_time is not None]
     if not publish_jobs:
-        return datetime.now()
+        return datetime.now(timezone.utc)
     max_time = max(j.next_run_time for j in publish_jobs)
     # Если очередь ушла более чем на 2 часа вперёд — игнорируем, начинаем с now
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     if max_time > now + timedelta(hours=2):
         return now
     return max_time
@@ -657,7 +658,8 @@ async def job_collect_news() -> None:
 
         # Сортировка: сначала высокий балл, потом свежесть
         filtered_news.sort(
-            key=lambda x: (x["score"], x.get("published") or datetime.now()), reverse=True
+            key=lambda x: (x["score"], x.get("published") or datetime.now(timezone.utc)),
+            reverse=True,
         )
 
         # --- ДЕДУПЛИКАЦИЯ: убираем одну и ту же новость из разных источников ---
@@ -679,7 +681,7 @@ async def job_collect_news() -> None:
             logger.info(f"🧹 Очищено старых задач: {len(old_jobs)}")
 
         # Начинаем планирование с текущего времени
-        base_time = datetime.now()
+        base_time = datetime.now(timezone.utc)
         current_time = base_time
         logger.info(f"📅 Начало планирования с: {current_time.strftime('%H:%M:%S')}")
 
@@ -724,10 +726,10 @@ async def job_collect_news() -> None:
 
             # Если очередь ушла дальше MAX_QUEUE_MINUTES — сбрасываем base_time
             # но current_time продолжает расти, чтобы сохранить интервал между постами
-            queue_minutes = (run_time - datetime.now()).total_seconds() / 60
+            queue_minutes = (run_time - datetime.now(timezone.utc)).total_seconds() / 60
             if queue_minutes > MAX_QUEUE_MINUTES:
                 # Сбрасываем: следующая новость будет через MIN_POST_INTERVAL от now
-                current_time = datetime.now()
+                current_time = datetime.now(timezone.utc)
                 run_time = current_time + timedelta(seconds=max(delay_seconds, MIN_POST_INTERVAL))
                 logger.info(
                     f"🔄 Очередь {queue_minutes:.0f} мин — сброс, продолжаем с {run_time.strftime('%H:%M:%S')}"
@@ -741,7 +743,7 @@ async def job_collect_news() -> None:
                 replace_existing=True,
             )
             scheduled_count += 1
-            actual_delay = int((run_time - datetime.now()).total_seconds())
+            actual_delay = int((run_time - datetime.now(timezone.utc)).total_seconds())
             logger.info(
                 f"⏳ [{level} {score}] delay={delay_seconds}, actual={actual_delay}с, run_time={run_time.strftime('%H:%M:%S')} → {title}..."
             )
@@ -1358,7 +1360,7 @@ async def main() -> None:
         trigger=IntervalTrigger(minutes=PUBLISH_INTERVAL_MINUTES),
         id="collect_news",
         replace_existing=True,
-        next_run_time=datetime.now(),
+        next_run_time=datetime.now(timezone.utc),
     )
     scheduler.start()
 

@@ -86,11 +86,11 @@ def record_publish(score: int, title: str, source: str):
 def get_publish_level(score: int) -> str:
     """
     Определяет уровень публикации по баллу.
-    red (9-10), orange (7-8), yellow (1-6).
+    red (8-10), orange (6-7), yellow (1-5).
     """
-    if score >= 9:
+    if score >= 8:
         return "red"
-    elif score >= 7:
+    elif score >= 6:
         return "orange"
     else:
         return "yellow"
