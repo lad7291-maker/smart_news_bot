@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional
 import aiohttp
 
 # Импорт RouterAI провайдера
-from ai_core.routerai_provider import AIResponse as RouterAIResponse
 from ai_core.routerai_provider import RouterAIProvider
 from utils.logger import logger
 

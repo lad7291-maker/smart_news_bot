@@ -13,6 +13,7 @@ P2-004: In-memory метрики latency и queue depth.
 Алерты: при p95 > threshold отправляется warning в лог.
 """
 
+import asyncio
 import logging
 import statistics
 import time
