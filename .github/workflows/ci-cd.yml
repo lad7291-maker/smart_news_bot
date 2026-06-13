@@ -35,31 +35,3 @@ jobs:
         run: pytest tests/ -v --tb=short -x || true
         env:
           PYTHONPATH: ${{ github.workspace }}
-
-  deploy:
-    name: 🚀 Deploy to VPS
-    needs: test
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
-
-    steps:
-      - name: 🚀 SSH Deploy
-        uses: appleboy/ssh-action@v1.0.0
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          port: ${{ secrets.VPS_PORT || 22 }}
-          script_stop: false
-          script: |
-            cd ${{ secrets.VPS_DEPLOY_PATH || '/root/smart_news_bot' }}
-            git fetch origin
-            git reset --hard origin/master
-            source venv/bin/activate
-            pip install -r requirements.txt -q
-            pkill -f bot_runner || true
-            sleep 2
-            nohup python3 bot_runner.py > logs/bot_runner.out 2>&1 &
-            echo "✅ Deployed at $(date)"
-            sleep 2
-            ps aux | grep bot_runner | grep -v grep
