@@ -1,0 +1,35 @@
+import re
+
+with open("telegram_bot/poster.py", "r") as f:
+    content = f.read()
+
+# Fix the broken keyboard block
+old = """                InlineKeyboardButton(
+                    text=f"👎 {dislike_count}" if dislike_count else "👎",
+                    callback_data=f"react:dislike:{message_id}",
+                ),
+            [
+                InlineKeyboardButton(
+                    text="💬 Обсуждать",
+                    url="https://t.me/Repost_world",
+                ),
+            ]
+        ]
+    )"""
+
+new = """                InlineKeyboardButton(
+                    text=f"👎 {dislike_count}" if dislike_count else "👎",
+                    callback_data=f"react:dislike:{message_id}",
+                ),
+            ]
+        ]
+    )"""
+
+if old in content:
+    content = content.replace(old, new)
+    print("✅ Fixed keyboard block")
+else:
+    print("❌ Pattern not found")
+
+with open("telegram_bot/poster.py", "w") as f:
+    f.write(content)

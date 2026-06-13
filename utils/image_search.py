@@ -762,6 +762,17 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
     source = article.get("source", "")
     link = article.get("link", "") or article.get("url", "")
 
+    # === ШАГ 0: Скриншот твита (если новость про твит) ===
+    try:
+        from utils.tweet_screenshot import find_tweet_screenshot
+
+        tweet_screenshot = await find_tweet_screenshot(article)
+        if tweet_screenshot:
+            logger.info(f"📸 Скриншот твита: {tweet_screenshot[:60]}...")
+            return tweet_screenshot
+    except Exception as e:
+        logger.debug(f"Tweet screenshot failed: {e}")
+
     # === ШАГ 1: RSS/OG/HTML (наивысший приоритет) ===
     if link:
         try:

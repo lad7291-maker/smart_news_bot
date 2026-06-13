@@ -73,7 +73,19 @@ async def send_news_to_channel(
                     and "image" not in image_url.lower()
                 )
 
-                if is_screenshot:
+                if image_url.startswith("/tmp/") or image_url.startswith("/"):
+                    # Это локальный файл (скриншот твита)
+                    from aiogram.types import FSInputFile
+
+                    photo_file = FSInputFile(image_url)
+                    await bot.send_photo(
+                        chat_id=channel_id,
+                        photo=photo_file,
+                        caption=caption,
+                        parse_mode="HTML",
+                    )
+                    return True
+                elif is_screenshot:
                     # Это скриншот — обрабатываем через screenshot pipeline
                     image_data = await process_screenshot_for_telegram(
                         image_url, article_title=news.get("title", ""), timeout=30.0

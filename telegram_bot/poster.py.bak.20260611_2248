@@ -1,0 +1,198 @@
+import asyncio
+from typing import Any, Dict
+
+from aiogram.exceptions import TelegramAPIError
+from aiogram.types import FSInputFile, BufferedInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from config import config
+from utils.logger import logger
+from utils.image_processor import process_image_for_telegram
+from utils.searxng_client import find_best_image
+from storage.reactions import reactions_manager
+from storage.analytics import analytics_manager
+
+from .core import bot
+from .formatter import format_news_post
+
+
+_NETWORK_ERRORS = [ConnectionError, TimeoutError, OSError]
+try:
+    from aiohttp import ClientConnectionError
+    _NETWORK_ERRORS.append(ClientConnectionError)
+except ImportError:
+    pass
+_NETWORK_ERRORS = tuple(_NETWORK_ERRORS)
+
+
+def _truncate_caption(text: str, max_len: int = 1024) -> str:
+    if len(text) <= max_len:
+        return text
+    truncated = text[: max_len - 3].rsplit(" ", 1)[0]
+    return truncated + "…"
+
+
+def _build_reactions_keyboard(message_id: int):
+    stats = reactions_manager.get_message_reactions(message_id)
+    like_count = stats.get("like", 0)
+    dislike_count = stats.get("dislike", 0)
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=f"👍 {like_count}" if like_count else "👍",
+                    callback_data=f"react:like:{message_id}",
+                ),
+                InlineKeyboardButton(
+                    text=f"👎 {dislike_count}" if dislike_count else "👎",
+                    callback_data=f"react:dislike:{message_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Обсуждать",
+                    url="https://t.me/Repost_world",
+                ),
+            ]
+        ]
+    )
+
+
+async def _send_with_retry(send_func, max_retries=3, base_delay=2):
+    for attempt in range(max_retries):
+        try:
+            return await send_func()
+        except _NETWORK_ERRORS as e:
+            if attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(f"⚠️ Сеть Telegram недоступна (попытка {attempt+1}/{max_retries}), ждём {delay}s...")
+                await asyncio.sleep(delay)
+            else:
+                logger.error(f"❌ Telegram недоступен после {max_retries} попыток: {e}")
+                raise
+        except TelegramAPIError:
+            raise
+
+
+async def send_news_to_channel(article: Dict[str, Any]) -> bool:
+    """Гибрид: сначала SearXNG фото, если не нашлось — branded video."""
+    try:
+        message_text = format_news_post(article)
+        title = article.get("title", "")
+        summary = article.get("summary", "")
+
+        # Шаг 1: Агрессивный поиск фото через SearXNG
+        image_url = None
+        try:
+            image_url = await find_best_image(title, summary, max_results=10)
+            if image_url:
+                logger.info(f"🖼 Найдено фото через SearXNG: {image_url[:80]}...")
+        except Exception as e:
+            logger.warning(f"⚠️ SearXNG поиск не сработал: {e}")
+
+        # Шаг 2: Если нашли фото — скачиваем, обрабатываем, watermark
+        if image_url:
+            try:
+                image_bytes = await process_image_for_telegram(
+                    image_url,
+                    article_title=title,
+                    source="searxng",
+                    add_wm=True,
+                    target_aspect=16/9,
+                    check_clip=True,
+                    check_nsfw=True,
+                    min_clip_score=0.20,  # Чуть ниже порог для агрессивности
+                )
+                if image_bytes:
+                    photo = BufferedInputFile(image_bytes, filename="news.jpg")
+                    sent_msg = await _send_with_retry(
+                        lambda: bot.send_photo(
+                            chat_id=config.TELEGRAM_CHANNEL_ID,
+                            photo=photo,
+                            caption=_truncate_caption(message_text),
+                            reply_markup=_build_reactions_keyboard(0),
+                        )
+                    )
+                    logger.info(f'✅ Отправлено с SearXNG фото: {article["title"][:50]}...')
+                    analytics_manager.record_message_sent(
+                        message_id=sent_msg.message_id if sent_msg else None,
+                        chat_id=str(config.TELEGRAM_CHANNEL_ID),
+                        article_link=article.get("link", ""),
+                        article_title=article.get("title", ""),
+                        source_tag=article.get("source", ""),
+                        score=article.get("score", 0),
+                        delivered=True,
+                        has_image=True,
+                        is_fallback_image=False,
+                    )
+                    return True
+            except Exception as img_err:
+                logger.warning(f'⚠️ SearXNG фото не обработалось ({img_err}), переходим к branded video')
+
+        # Шаг 3: Fallback — branded video
+        try:
+            video = FSInputFile("assets/branded_video.mp4")
+            sent_msg = await _send_with_retry(
+                lambda: bot.send_video(
+                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    video=video,
+                    caption=_truncate_caption(message_text),
+                    reply_markup=_build_reactions_keyboard(0),
+                )
+            )
+            logger.info(f'✅ Отправлено с branded video: {article["title"][:50]}...')
+            analytics_manager.record_message_sent(
+                message_id=sent_msg.message_id if sent_msg else None,
+                chat_id=str(config.TELEGRAM_CHANNEL_ID),
+                article_link=article.get("link", ""),
+                article_title=article.get("title", ""),
+                source_tag=article.get("source", ""),
+                score=article.get("score", 0),
+                delivered=True,
+                has_image=True,
+                is_fallback_image=True,
+            )
+            return True
+        except Exception as video_err:
+            logger.warning(f'⚠️ Video не отправился ({video_err}), fallback на текст')
+            sent_msg = await _send_with_retry(
+                lambda: bot.send_message(
+                    chat_id=config.TELEGRAM_CHANNEL_ID,
+                    text=message_text,
+                    disable_web_page_preview=True,
+                )
+            )
+            logger.info(f'✅ Отправлено (текст): {article["title"][:50]}...')
+            analytics_manager.record_message_sent(
+                message_id=sent_msg.message_id if sent_msg else None,
+                chat_id=str(config.TELEGRAM_CHANNEL_ID),
+                article_link=article.get("link", ""),
+                article_title=article.get("title", ""),
+                source_tag=article.get("source", ""),
+                score=article.get("score", 0),
+                delivered=True,
+                has_image=False,
+                is_fallback_image=False,
+            )
+            return True
+    except TelegramAPIError as e:
+        logger.error(f"❌ Ошибка Telegram API: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"❌ Неизвестная ошибка при отправке: {e}", exc_info=True)
+        return False
+
+
+async def send_multiple_news(articles, max_posts=3, delay=3):
+    """Отправляет несколько новостей в канал с задержкой между постами."""
+    sent = 0
+    for article in articles[:max_posts]:
+        try:
+            success = await send_news_to_channel(article)
+            if success:
+                sent += 1
+            if delay and len(articles[:max_posts]) > 1:
+                await asyncio.sleep(delay)
+        except Exception as e:
+            logger.error(f"❌ Ошибка при отправке поста {sent+1}: {e}")
+    return sent

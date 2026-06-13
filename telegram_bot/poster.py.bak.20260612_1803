@@ -1,0 +1,133 @@
+# -*- coding: utf-8 -*-
+"""
+SmartNewsAI Poster — отправка постов в Telegram
+Без inline-кнопок (реакции теперь в тексте поста через formatter)
+"""
+
+import asyncio
+import os
+from pathlib import Path
+from typing import Any, Dict, Optional
+
+# Re-export для совместимости с тестами
+from telegram_bot.formatter import format_micro_text
+from telegram_bot.formatter import format_micro_text as format_micro_text
+from telegram_bot.formatter import format_news_post
+
+# ──────────────────────────────────────────
+# Stubs / fallback для утилит (могут отсутствовать на ранних этапах)
+# ──────────────────────────────────────────
+
+try:
+    from utils.image_search import find_news_image
+except ImportError:
+    find_news_image = None
+
+try:
+    from utils.image_processor import process_image_for_telegram
+except ImportError:
+    process_image_for_telegram = None
+
+
+def _truncate_caption(text: str, max_len: int = 1024) -> str:
+    if len(text) <= max_len:
+        return text
+    truncated = text[: max_len - 3].rsplit(" ", 1)[0]
+    return truncated + "…"
+
+
+async def send_news_to_channel(
+    bot,
+    channel_id: str,
+    news: Dict[str, Any],
+) -> bool:
+    """
+    Отправляет новостной пост в Telegram-канал.
+
+    Priority: photo → video → text fallback
+    Без inline-кнопок (реакции добавлены в текст через formatter).
+    """
+    message_text = format_news_post(news)
+
+    # 1. Пробуем фото (новый приоритет: RSS/OG → Stock → SearXNG → Fallback)
+    if find_news_image and process_image_for_telegram:
+        try:
+            image_url = await find_news_image(news)
+            if image_url:
+                processed = await process_image_for_telegram(image_url, news)
+                if processed and getattr(processed, "is_valid", False):
+                    image_data = getattr(processed, "image_bytes", None)
+                    if image_data:
+                        caption = _truncate_caption(message_text)
+                        await bot.send_photo(
+                            chat_id=channel_id,
+                            photo=image_data,
+                            caption=caption,
+                            parse_mode="Markdown",
+                        )
+                        return True
+        except Exception as e:
+            # Fallback на следующий вариант
+            pass
+
+    # 2. Пробуем branded video
+    try:
+        video_path = Path("assets/branded_video.mp4")
+        if video_path.exists():
+            try:
+                from aiogram.types import FSInputFile
+
+                video = FSInputFile(str(video_path))
+                await bot.send_video(
+                    chat_id=channel_id,
+                    video=video,
+                    caption=_truncate_caption(message_text),
+                    parse_mode="Markdown",
+                )
+                return True
+            except ImportError:
+                # Fallback без aiogram
+                with open(video_path, "rb") as f:
+                    await bot.send_video(
+                        chat_id=channel_id,
+                        video=f,
+                        caption=_truncate_caption(message_text),
+                        parse_mode="Markdown",
+                    )
+                return True
+    except Exception:
+        pass
+
+    # 3. Текстовый fallback (без превью ссылки)
+    try:
+        await bot.send_message(
+            chat_id=channel_id,
+            text=message_text,
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+        return True
+    except Exception as e:
+        print(f"[ERROR] send_news_to_channel text fallback: {e}")
+        return False
+
+
+async def send_multiple_news(
+    bot,
+    channel_id: str,
+    articles,
+    max_posts: int = 3,
+    delay: int = 3,
+):
+    """Отправляет несколько новостей в канал с задержкой между постами."""
+    sent = 0
+    for article in articles[:max_posts]:
+        try:
+            success = await send_news_to_channel(bot, channel_id, article)
+            if success:
+                sent += 1
+            if delay and len(articles[:max_posts]) > 1:
+                await asyncio.sleep(delay)
+        except Exception as e:
+            print(f"[ERROR] send_multiple_news: {e}")
+    return sent

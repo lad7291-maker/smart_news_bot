@@ -1,0 +1,204 @@
+"""
+Модуль форматирования постов с AI-анализом.
+- HTML-разметка (без Markdown).
+- AI-комментарий выводится как основное содержание поста (с префиксом 📌).
+- AI-комментарий должен быть передан в статье под ключом 'ai_comment'.
+- Эмодзи определяются по содержанию новости (тема/страна/сфера), а не по источнику.
+- P0-002: Все динамические строки экранируются для безопасного HTML.
+- P2-001: Эмодзи загружаются из config/emojis.yaml.
+"""
+
+from telegram_bot.emoji_loader import get_emoji_config
+
+
+def _detect_topic_emoji(title, summary, source):
+    """
+    P2-001: Определяет эмодзи по содержанию новости.
+    Правила загружаются из config/emojis.yaml (hot-reload).
+    Fallback на source_emoji → 📰.
+    """
+    cfg = get_emoji_config()
+    return cfg.detect(f"{title} {summary}", source)
+
+
+def _escape_html(text: str) -> str:
+    """P0-002: Экранирует спецсимволы HTML для безопасной вставки в Telegram HTML."""
+    if not text:
+        return ""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+# Topic keywords for AI classification (P3-006)
+
+# Country flag detection (added 2026-06-11)
+_COUNTRY_FLAGS = {
+    "россия": chr(127479)+chr(127482), "рф": chr(127479)+chr(127482), "россий": chr(127479)+chr(127482), "москва": chr(127479)+chr(127482),
+    "сша": chr(127482)+chr(127480), "америк": chr(127482)+chr(127480), "трамп": chr(127482)+chr(127480), "байден": chr(127482)+chr(127480), "пентагон": chr(127482)+chr(127480), "белый дом": chr(127482)+chr(127480),
+    "украин": chr(127482)+chr(127462), "киев": chr(127482)+chr(127462),
+    "китай": chr(127464)+chr(127475), "кнр": chr(127464)+chr(127475), "пекин": chr(127464)+chr(127475), "си цзиньпин": chr(127464)+chr(127475),
+    "иран": chr(127470)+chr(127479), "тегеран": chr(127470)+chr(127479),
+    "израил": chr(127470)+chr(127473), "иерусалим": chr(127470)+chr(127473),
+    "турц": chr(127481)+chr(127479), "эрдоган": chr(127481)+chr(127479),
+    "европ": chr(127466)+chr(127482), "ес ": chr(127466)+chr(127482), "брюссел": chr(127466)+chr(127482),
+    "герман": chr(127465)+chr(127466), "франц": chr(127467)+chr(127479), "британ": chr(127468)+chr(127463), "англи": chr(127468)+chr(127463), "лондон": chr(127468)+chr(127463),
+    "япон": chr(127471)+chr(127477), "инд": chr(127470)+chr(127475), "коре": chr(127472)+chr(127479), "кндр": chr(127472)+chr(127477), "северокор": chr(127472)+chr(127477),
+    "саудов": chr(127480)+chr(127462), "оаэ": chr(127462)+chr(127458), "катар": chr(127478)+chr(127462),
+    "бразил": chr(127463)+chr(127479), "канад": chr(127464)+chr(127462), "австрал": chr(127462)+chr(127482),
+    "польш": chr(127477)+chr(127473), "венгр": chr(127469)+chr(127482), "чех": chr(127464)+chr(127487), "словак": chr(127480)+chr(127472),
+    "армен": chr(127462)+chr(127474), "азербайджан": chr(127462)+chr(127487), "груз": chr(127468)+chr(127466), "узбек": chr(127482)+chr(127487), "казах": chr(127472)+chr(127487),
+    "серб": chr(127479)+chr(127480), "болгар": chr(127463)+chr(127468), "румын": chr(127479)+chr(127476), "хорват": chr(127469)+chr(127479),
+    "грец": chr(127468)+chr(127479), "кипр": chr(127464)+chr(127254), "малайз": chr(127474)+chr(127486), "сингапур": chr(127480)+chr(127468),
+    "пакистан": chr(127477)+chr(127472), "афган": chr(127462)+chr(127467), "ирак": chr(127470)+chr(127478), "сири": chr(127480)+chr(127486), "ливан": chr(127473)+chr(127463),
+    "египет": chr(127466)+chr(127468), "ливи": chr(127473)+chr(127486), "алжир": chr(127465)+chr(127487), "марокко": chr(127474)+chr(127462), "тунис": chr(127481)+chr(127475),
+    "норвег": chr(127475)+chr(127476), "швед": chr(127480)+chr(127479), "фин": chr(127467)+chr(127470), "дани": chr(127465)+chr(127472), "нидерланд": chr(127475)+chr(127473),
+    "швейцар": chr(127464)+chr(127469), "австри": chr(127462)+chr(127481), "бельги": chr(127463)+chr(127466), "ирланд": chr(127470)+chr(127466),
+    "итали": chr(127470)+chr(127481), "испан": chr(127466)+chr(127480), "португал": chr(127477)+chr(127481), "вьетнам": chr(127483)+chr(127475), "индонез": chr(127470)+chr(127465),
+    "тайланд": chr(127481)+chr(127469), "филиппин": chr(127477)+chr(127469), "мексик": chr(127474)+chr(127485), "аргентин": chr(127462)+chr(127479), "чил": chr(127464)+chr(127481),
+    "колумб": chr(127464)+chr(127476), "перу": chr(127477)+chr(127466), "венесуэл": chr(127483)+chr(127466), "эквадор": chr(127466)+chr(127464), "болив": chr(127463)+chr(127476),
+    "парагвай": chr(127477)+chr(127486), "уругвай": chr(127482)+chr(127486), "шри-ланк": chr(127473)+chr(127472), "непал": chr(127475)+chr(127477), "банглад": chr(127463)+chr(127465),
+    "мьянма": chr(127474)+chr(127474), "камбодж": chr(127472)+chr(127469), "лаос": chr(127473)+chr(127462), "монгол": chr(127474)+chr(127475), "киргиз": chr(127472)+chr(127468),
+    "таджик": chr(127481)+chr(127471), "туркмен": chr(127481)+chr(127466), "молдав": chr(127474)+chr(127465), "беларус": chr(127463)+chr(127486), "эстон": chr(127466)+chr(127466),
+    "латв": chr(127473)+chr(127483), "литв": chr(127473)+chr(127481), "украина": chr(127482)+chr(127462), "нато": chr(127760), "оон": chr(127760), "g7": chr(127760), "g20": chr(127760),
+    "всемир": chr(127760), "мвф": chr(127760), "вто": chr(127760), "юнеско": chr(127760), "who": chr(127760),
+    "банк": chr(127974), "нефть": chr(128738), "газ": chr(128293), "золото": chr(127941), "крипт": chr(8383), "биткоин": chr(8383),
+    "spacex": chr(128640), "nasa": chr(128640), "космос": chr(128640), "луна": chr(127769), "марс": chr(128308),
+}
+
+def _detect_country_flag(title: str, summary: str) -> str:
+    text = f"{title} {summary}".lower()
+    for country, flag in _COUNTRY_FLAGS.items():
+        if country in text:
+            return flag
+    return chr(9889)
+
+_TOPIC_KEYWORDS = {
+    "Политика": ["президент", "санкци", "выборы", "парламент", "правительство", "закон", "трамп", "путин", "байден", "нато", "ес ", "ес,", "конфликт", "война", "переговоры", "дипломат", "голосование", "партия", "оппозиция", "госдума", "конгресс", "сша", "россия", "украин", "китай", "иран", "израил"],
+    "Экономика": ["рубль", "доллар", "евро", "инфляци", "цб", "цены", "рост", "падение", "биржа", "рынок", "акции", "инвестиции", "банк", "кредит", "фрс", "экономик", "ввп", "финанс", "налог", "бюджет", "торговля", "тариф"],
+    "Технологии": ["AI", "ии", "искусственный интеллект", "нейросеть", "apple", "google", "microsoft", "meta", "телефон", "приложение", "кибер", "хакер", "квант", "космос", "spacex", "tesla", "nvidia", "чип", "процессор", "смартфон", "IT", "технолог", "робот", "дрон"],
+    "Крипта": ["bitcoin", "биткоин", "криптовалют", "майнинг", "blockchain", "eth", "ethereum", "binance", "крипто", "блокчейн", "nft", "token", "токен"],
+    "Спорт": ["футбол", "хоккей", "олимпиада", "матч", "чемпионат", "спорт", "теннис", "баскетбол", "фифа", "уефа", "нхл", "нба", "ф1", "формула", "марафон", "бокс", "ufc"],
+    "Наука": ["исследован", "ученые", "открытие", "ген", "медицин", "вакцин", "наса", "nasa", "марс", "луна", "днк", "физик", "химия", "биолог", "эксперимент", "ученый"],
+    "Развлечения": ["кино", "фильм", "сериал", "музыка", "концерт", "игра", "шоу", "звезда", "актер", "режиссер", "холивуд", "netflix", "oscar", "оскар", "премия", "фестиваль", "книга", "бестселлер"],
+}
+
+
+def _classify_topic(title: str, summary: str) -> str:
+    """AI-классификация темы по ключевым словам (P3-006)."""
+    text = f"{title} {summary}".lower()
+    scores = {}
+    for topic, keywords in _TOPIC_KEYWORDS.items():
+        score = sum(1 for kw in keywords if kw.lower() in text)
+        if score > 0:
+            scores[topic] = score
+    if not scores:
+        return ""
+    sorted_topics = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    top = [t for t, s in sorted_topics if s >= 2][:2]
+    if not top and sorted_topics:
+        top = [sorted_topics[0][0]]
+    return " ".join(f"#{t}" for t in top)
+
+
+def format_news_post(article, variant_config=None):
+    """
+    Форматирует пост с AI-анализом.
+    P3-002: Поддержка A/B вариантов через variant_config.
+    P0-002: Все динамические строки экранируются для безопасного HTML.
+    """
+    title = (article.get("title", "") or "").strip()
+    summary = article.get("summary", "") or ""
+    link = article.get("link", "")
+    # UTM-метки для отслеживания трафика из Telegram в Яндекс.Метрике
+    if link:
+        utm = "utm_source=smartnewsai&utm_medium=telegram&utm_campaign=news_post"
+        if "?" in link:
+            link = link + "&" + utm
+        else:
+            link = link + "?" + utm
+        article["link"] = link  # обновляем в article для последующего использования
+    source = article.get("source", "News")
+    ai_comment = (article.get("ai_comment") or "").strip()
+
+    # P3-002: Применяем конфиг A/B варианта
+    if variant_config is None:
+        variant_config = {
+            "has_ai_comment": True,
+            "has_closer_question": True,
+            "has_summary": False,
+        }
+
+    emoji = _detect_topic_emoji(title, summary, source)
+
+    # P2-005: Graceful degradation — если AI недоступен, используем summary
+    if ai_comment and "AI analysis temporarily unavailable" in ai_comment:
+        ai_comment = summary[:300] if summary else ""
+
+    # AI-комментарий — основной текст поста
+    # Если AI-комментария нет — fallback на оригинальный summary
+    ai_block = ""
+    if variant_config.get("has_ai_comment", True) and ai_comment:
+        ai_clean = ai_comment.replace("📌 ", "").replace("📚 ", "").replace("✅ ", "")
+        ai_clean = ai_clean.replace("**", "").replace("— ", "• ")
+        ai_block = f"📌 {_escape_html(ai_clean)}\n"
+    elif summary:
+        # Fallback: оригинальный summary, если AI не сработал
+        summary_clean = " ".join(summary.split())
+        if len(summary_clean) > 20:
+            if len(summary_clean) > 500:
+                summary_clean = summary_clean[:500].rstrip() + "…"
+            ai_block = f"📌 {_escape_html(summary_clean)}\n"
+
+    # Closer-вопрос
+    closer = ""
+    if variant_config.get("has_closer_question", True):
+        closers = [
+            "",
+            "",
+            "",
+            "",
+            "Что думаете?",
+            "Обсуждаем?",
+            "Как считаете — это серьёзно?",
+            "Похоже на правду?",
+        ]
+        closer_raw = __import__("random").choice(closers)
+        if closer_raw:
+            closer = f"{_escape_html(closer_raw)}\n"
+
+    # Detect country flag for the title
+    flag = _detect_country_flag(title, summary)
+
+    # Build quote block if article has a quote
+    quote_block = ""
+    article_quote = article.get("quote", "").strip()
+    if article_quote and len(article_quote) > 10:
+        quote_clean = article_quote.replace("**", "").replace(chr(34), "")
+        if len(quote_clean) > 300:
+            quote_clean = quote_clean[:300].rstrip() + "..."
+        quote_block = f"\n" + chr(128172) + " <i>" + chr(171) + "" + _escape_html(quote_clean) + "" + chr(187) + "</i>\n"
+
+    # Build body text: split into 2-3 paragraphs if long enough
+    body_text = ai_block.replace(chr(128204) + " ", "") if ai_block else ""
+    body_paragraphs = []
+    if body_text:
+        sentences = body_text.replace(chr(8226) + " ", "").split(". ")
+        if len(sentences) > 3:
+            mid = len(sentences) // 2
+            p1 = ". ".join(sentences[:mid]) + ("." if not sentences[:mid][-1].endswith(".") else "")
+            p2 = ". ".join(sentences[mid:])
+            body_paragraphs = [p1.strip(), p2.strip()]
+        else:
+            body_paragraphs = [body_text.strip()]
+
+    body = "\n\n".join(body_paragraphs)
+
+    cta = chr(128073) + " <b>Smart_News_AI</b> — подписаться"
+    link_text = chr(128279) + " <a href=\"" + link + "\">Читать полностью</a>"
+
+    message = f"""{flag} <b>{_escape_html(title)}</b>{quote_block}\n\n{body}\n\n{closer}\n{cta}\n\n{link_text}"""
+    return message.strip()
