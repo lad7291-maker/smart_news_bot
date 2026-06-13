@@ -341,7 +341,7 @@ def get_best_quote(text: str) -> Optional[Dict[str, str]]:
 
 def format_quote_for_post(quote_data: Optional[Dict[str, str]]) -> str:
     """
-    Форматирует цитату для вставки в пост.
+    Форматирует цитату для вставки в пост с цветным блоком.
 
     Args:
         quote_data: Словарь с 'quote' и 'speaker'
@@ -355,10 +355,11 @@ def format_quote_for_post(quote_data: Optional[Dict[str, str]]) -> str:
     quote = quote_data["quote"]
     speaker = quote_data.get("speaker", "")
 
+    # Цветной блок с цитатой (как у FTT)
     if speaker:
-        return f"\n<blockquote>«{quote}» — {speaker}.</blockquote>\n"
+        return f"\n<blockquote>💬 <b>«{quote}»</b>\n— <i>{speaker}</i></blockquote>\n"
     else:
-        return f"\n<blockquote>«{quote}»</blockquote>\n"
+        return f"\n<blockquote>💬 <b>«{quote}»</b></blockquote>\n"
 
 
 if __name__ == "__main__":

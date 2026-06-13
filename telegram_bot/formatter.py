@@ -750,6 +750,9 @@ def format_news_post(article):
         quote_data = get_best_quote(combined_text)
         if quote_data:
             quote_block = format_quote_for_post(quote_data)
+            # Добавляем визуальный разделитель (как у FTT)
+            if quote_block:
+                quote_block = f"\n🔥 {'━' * 20}\n{quote_block.strip()}\n{'━' * 20}\n"
     except Exception:
         pass
 
