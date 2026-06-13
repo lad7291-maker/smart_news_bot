@@ -69,6 +69,8 @@ _OG_BAD_PATTERNS = {
     "cdnn21.img.ria.ru/images/sharing/",  # RIA sharing — соц-карточки
     "russian.rt.com/static/blocks/og-img/",  # RT OG — соц-карточка с текстом
     "rt.com/static/blocks/og-img/",
+    "interfax.ru/aspimg/",  # Interfax OG — соц-карточка с логотипом и заголовком
+    "interfax.com/aspimg/",
 }
 
 # Домены с хорошими OG
