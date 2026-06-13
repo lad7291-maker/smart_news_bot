@@ -28,6 +28,13 @@ from langdetect import LangDetectException, detect
 
 from ai_core import analyze_news  # асинхронный AI-анализ
 from config import config
+from core.scheduler_jobs import (
+    _send_scheduled_digest,
+    _yellow_digest_queue,
+    collect_from_source,
+    job_collect_news,
+    publish_single_article,
+)
 from parsers.rss_parser import RSSParser
 from storage.cache import cache_manager
 from telegram_bot.poster import send_multiple_news
@@ -750,9 +757,13 @@ async def job_collect_news() -> None:
 
             current_time = run_time
 
-        # FEAT-001: Отправляем дайджест yellow-новостей, если их накопилось достаточно
-        if len(yellow_articles) >= 3:
-            asyncio.create_task(_send_yellow_digest(yellow_articles))
+        # FEAT-001: Накапливаем yellow-новости в очередь для дайджеста (отправляется по расписанию 10:00/17:00/21:00)
+        if yellow_articles:
+            _yellow_digest_queue.extend(yellow_articles)
+            if len(_yellow_digest_queue) > 30:
+                _yellow_digest_queue = _yellow_digest_queue[-30:]
+            logger.info(f"📚 Yellow-новостей в очереди дайджеста: {len(_yellow_digest_queue)}")
+
         elif yellow_articles:
             # Если мало — публикуем по одной с большой задержкой
             for article in yellow_articles:
@@ -1361,6 +1372,27 @@ async def main() -> None:
         id="collect_news",
         replace_existing=True,
         next_run_time=datetime.now(timezone.utc),
+    )
+    # Дайджесты по расписанию: 10:00, 17:00, 21:00 МСК
+    from apscheduler.triggers.cron import CronTrigger
+
+    scheduler.add_job(
+        _send_scheduled_digest,
+        trigger=CronTrigger(hour=10, minute=0, timezone="Europe/Moscow"),
+        id="digest_10",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _send_scheduled_digest,
+        trigger=CronTrigger(hour=17, minute=0, timezone="Europe/Moscow"),
+        id="digest_17",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        _send_scheduled_digest,
+        trigger=CronTrigger(hour=21, minute=0, timezone="Europe/Moscow"),
+        id="digest_21",
+        replace_existing=True,
     )
     scheduler.start()
 
