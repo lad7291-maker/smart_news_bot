@@ -75,6 +75,7 @@ async def send_news_to_channel(
 
                 if image_url.startswith("/tmp/") or image_url.startswith("/"):
                     # Это локальный файл (скриншот твита)
+                    caption = _truncate_caption(message_text)
                     from aiogram.types import FSInputFile
 
                     photo_file = FSInputFile(image_url)
