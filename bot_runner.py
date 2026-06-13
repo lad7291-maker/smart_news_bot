@@ -610,7 +610,7 @@ def get_last_scheduled_time() -> datetime:
 
 # === Основной сбор, перевод и постановка в очередь ===
 async def job_collect_news() -> None:
-    global scheduler
+    global scheduler, _yellow_digest_queue
 
     if scheduler is None:
         return
