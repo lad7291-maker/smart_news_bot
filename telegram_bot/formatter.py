@@ -792,5 +792,5 @@ def format_news_post(article):
 🔗 <a href="{link}">Читать полностью</a>
 📰 <i>— {source}</i>
 
-👉 <a href="https://t.me/SmartNewsAI">SmartNewsAI — подписаться</a>"""
+👉 <a href="https://t.me/Smart_News_AI">SmartNewsAI — подписаться</a>"""
     return message.strip()
