@@ -732,13 +732,8 @@ def format_news_post(article):
     else:
         importance_emoji = "📌 "
 
+    # Убираем summary из поста — AI должен давать анализ, не пересказ
     summary_block = ""
-    if summary:
-        summary = " ".join(summary.split())
-        if len(summary) > 20:
-            if len(summary) > 500:
-                summary = summary[:500].rstrip() + "…"
-            summary_block = f"📌 {_escape_html(summary)}\n\n"
     emoji = _detect_topic_emoji(title, summary, source)
 
     # Извлекаем цитату из summary или ai_comment
@@ -748,7 +743,7 @@ def format_news_post(article):
 
         combined_text = f"{summary} {ai_comment}"
         quote_data = get_best_quote(combined_text)
-        if quote_data:
+        if quote_data and quote_data.get("speaker") and quote_data["speaker"] != "он":
             quote_block = format_quote_for_post(quote_data)
             # Добавляем визуальный разделитель (как у FTT)
             if quote_block:
@@ -756,10 +751,7 @@ def format_news_post(article):
     except Exception:
         pass
 
-    has_lead = __import__("random").random() > 0.3
-    lead_phrases = ["", "", "", "Кратко: ", "Главное: ", "Суть: "]
-    lead = __import__("random").choice(lead_phrases) if has_lead else ""
-
+    # AI-анализ: убираем пересказ, оставляем контекст
     ai_clean = ai_comment.replace("📌 ", "").replace("📚 ", "").replace("✅ ", "")
     ai_clean = ai_clean.replace("**", "").replace("— ", "• ")
     # Убираем HTML-экранирование из AI-комментария перед экранированием
@@ -770,6 +762,14 @@ def format_news_post(article):
         .replace("&gt;", ">")
     )
     ai_clean = _escape_html(ai_clean)
+
+    # Если AI просто пересказывает заголовок — не показывать
+    # Проверяем: содержит ли AI ключевые слова из заголовка
+    title_words = set(title.lower().split()[:5])  # первые 5 слов заголовка
+    ai_words = set(ai_clean.lower().split()[:20])  # первые 20 слов AI
+    overlap = len(title_words & ai_words)
+    if overlap >= 3:  # AI слишком сильно перекликается с заголовком
+        ai_clean = ""  # Убираем AI, оставляем только цитату и источник
 
     closers = [
         "",
@@ -784,10 +784,20 @@ def format_news_post(article):
     closer_raw = __import__("random").choice(closers)
     closer = _escape_html(closer_raw) if closer_raw else ""
 
+    # Формируем пост: заголовок + AI-анализ (если есть) + цитата + источник
+    content_parts = []
+    if ai_clean:
+        content_parts.append(ai_clean)
+    if quote_block:
+        content_parts.append(quote_block)
+    if closer:
+        content_parts.append(closer)
+
+    content = "\n\n".join(content_parts)
+
     message = f"""{importance_emoji}{emoji} <b>{title}</b>
 
-{summary_block}{lead}{ai_clean}
-{quote_block}{closer}
+{content}
 
 🔗 <a href="{link}">Читать полностью</a>
 📰 <i>— {source}</i>
