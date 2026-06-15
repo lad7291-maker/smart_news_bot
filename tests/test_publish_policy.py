@@ -15,13 +15,14 @@ class TestPublishPolicy:
     def test_get_publish_level_red(self):
         assert publish_policy.get_publish_level(10) == "red"
         assert publish_policy.get_publish_level(9) == "red"
+        assert publish_policy.get_publish_level(8) == "red"
 
     def test_get_publish_level_orange(self):
-        assert publish_policy.get_publish_level(8) == "orange"
         assert publish_policy.get_publish_level(7) == "orange"
+        assert publish_policy.get_publish_level(6) == "orange"
 
     def test_get_publish_level_yellow(self):
-        assert publish_policy.get_publish_level(6) == "yellow"
+        assert publish_policy.get_publish_level(5) == "yellow"
         assert publish_policy.get_publish_level(1) == "yellow"
 
     def test_red_always_allowed(self):

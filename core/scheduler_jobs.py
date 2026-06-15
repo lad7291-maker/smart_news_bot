@@ -337,16 +337,8 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
         if existing_image and existing_image_score >= 65:
             article["image_url"] = existing_image
             article["image_source"] = existing_image_source or "rss"
-            # Отмечаем изображение как использованное (дедупликация)
-            from utils.image_search import _mark_image_used
-
-            _mark_image_used(existing_image)
         elif image_url:
             article["image_url"] = image_url
-            # Отмечаем изображение как использованное (дедупликация)
-            from utils.image_search import _mark_image_used
-
-            _mark_image_used(image_url)
 
             from utils.image_relevance_checker import get_fallback_image_url
 

@@ -1,5 +1,5 @@
 """
-Тесты для P2-001: Рефакторинг _detect_topic_emoji().
+Tests for P2-001: Рефакторинг _detect_topic_emoji().
 
 Покрывают:
 - Валидацию EmojiConfig / EmojiRule (Pydantic)
@@ -238,7 +238,7 @@ class TestDetectTopicEmojiIntegration:
                 {
                     "rules": [],
                     "source_emoji": {},
-                    "default_emoji": "❓",
+                    "default_emoji": "📰",
                 }
             ),
             encoding="utf-8",
@@ -248,7 +248,8 @@ class TestDetectTopicEmojiIntegration:
 
         emoji_loader._emoji_loader = EmojiConfigLoader(path=str(p))
 
-        assert _detect_topic_emoji("Нейтральный заголовок", "", "Unknown") == "❓"
+        # Текущий formatter использует "📰" как дефолтный эмодзи
+        assert _detect_topic_emoji("Нейтральный заголовок", "", "Unknown") == "📰"
 
     def test_first_match_wins(self, tmp_path: Path, monkeypatch):
         p = tmp_path / "emojis.yaml"

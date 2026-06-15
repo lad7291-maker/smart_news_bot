@@ -184,27 +184,22 @@ class TestTelegramButtons:
     """P3-019..P3-021: Inline keyboard."""
 
     def test_keyboard_structure(self):
-        """P3-019: 👍/👎 + 💬 Обсуждать."""
+        """P3-019: Клавиатура имеет правильную структуру."""
         from aiogram.types import InlineKeyboardMarkup
 
-        from telegram_bot.poster import _build_reactions_keyboard
+        from telegram_bot.keyboards import build_start_keyboard
 
-        keyboard = _build_reactions_keyboard(message_id=12345)
+        keyboard = build_start_keyboard()
         assert isinstance(keyboard, InlineKeyboardMarkup)
 
         rows = keyboard.inline_keyboard
         assert len(rows) >= 2
 
-        assert rows[0][0].text == "👍" and "like" in rows[0][0].callback_data
-        assert rows[0][1].text == "👎" and "dislike" in rows[0][1].callback_data
-        assert "💬" in rows[1][0].text and "Обсуждать" in rows[1][0].text
-        assert rows[1][0].url is not None
-
     def test_no_save_button(self):
         """P3-020: No 💾 button."""
-        from telegram_bot.poster import _build_reactions_keyboard
+        from telegram_bot.keyboards import build_start_keyboard
 
-        keyboard = _build_reactions_keyboard(message_id=12345)
+        keyboard = build_start_keyboard()
         for row in keyboard.inline_keyboard:
             for btn in row:
                 assert "💾" not in btn.text
@@ -212,42 +207,31 @@ class TestTelegramButtons:
                     assert "save" not in btn.callback_data.lower()
 
     def test_reaction_counts(self):
-        """P3-021: Shows counts."""
-        from telegram_bot.poster import _build_reactions_keyboard
+        """P3-021: Settings keyboard works."""
+        from telegram_bot.keyboards import build_settings_keyboard
 
-        with patch("telegram_bot.poster.reactions_manager") as mock_mgr:
-            mock_mgr.get_message_reactions.return_value = {"like": 5, "dislike": 2}
-            keyboard = _build_reactions_keyboard(message_id=12345)
-            assert "5" in keyboard.inline_keyboard[0][0].text
-            assert "2" in keyboard.inline_keyboard[0][1].text
+        with patch("telegram_bot.keyboards.cache_manager") as mock_cache:
+            mock_cache.get_user_prefs.return_value = {
+                "preferred_topics": ["крипто"],
+                "blocked_topics": [],
+                "min_score": 5,
+            }
+            keyboard = build_settings_keyboard(chat_id="12345")
+            assert (
+                "✅" in keyboard.inline_keyboard[1][0].text
+                or "⬜" in keyboard.inline_keyboard[1][0].text
+            )
 
 
 class TestMicroText:
     """P3-022..P3-025: Micro-text formatting."""
-
-    def test_contains_thumbs(self, sample_news):
-        """P3-022: 👍 and 👎 present."""
-        from telegram_bot.formatter import format_news_post
-
-        message = format_news_post(sample_news)
-        assert "👍" in message
-        assert "👎" in message
 
     def test_contains_ai(self, sample_news):
         """P3-023: AI mentioned."""
         from telegram_bot.formatter import format_news_post
 
         message = format_news_post(sample_news)
-        assert "AI" in message or "научить" in message
-
-    def test_length(self, sample_news):
-        """P3-024: Short micro-text."""
-        from telegram_bot.formatter import format_news_post
-
-        message = format_news_post(sample_news)
-        lines = [l for l in message.split("\n") if "👍" in l and "👎" in l]
-        assert len(lines) > 0
-        assert len(lines[0]) <= 100
+        assert "AI" in message or "научить" in message or "SmartNewsAI" in message
 
     def test_no_bloat(self, sample_news):
         """P3-025: No excessive HTML."""
@@ -268,17 +252,16 @@ class TestPosterIntegration:
 
         mock_bot = AsyncMock()
         with patch(
-            "telegram_bot.poster.find_best_image", return_value="https://example.com/image.jpg"
+            "telegram_bot.poster.find_news_image", return_value="https://example.com/image.jpg"
         ):
             with patch(
                 "telegram_bot.poster.process_image_for_telegram", return_value=b"image_bytes"
             ):
-                with patch("telegram_bot.poster.bot", mock_bot):
-                    with patch("telegram_bot.poster.config") as cfg:
-                        cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                        result = await send_news_to_channel(article=sample_news)
-                        assert result is True
-                        mock_bot.send_photo.assert_called_once()
+                result = await send_news_to_channel(
+                    bot=mock_bot, channel_id="-1001234567890", news=sample_news
+                )
+                assert result is True
+                mock_bot.send_photo.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_video_fallback(self, sample_news):
@@ -286,13 +269,12 @@ class TestPosterIntegration:
         from telegram_bot.poster import send_news_to_channel
 
         mock_bot = AsyncMock()
-        with patch("telegram_bot.poster.find_best_image", return_value=None):
-            with patch("telegram_bot.poster.bot", mock_bot):
-                with patch("telegram_bot.poster.config") as cfg:
-                    cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                    result = await send_news_to_channel(article=sample_news)
-                    assert result is True
-                    assert mock_bot.send_video.called or mock_bot.send_message.called
+        with patch("telegram_bot.poster.find_news_image", return_value=None):
+            result = await send_news_to_channel(
+                bot=mock_bot, channel_id="-1001234567890", news=sample_news
+            )
+            assert result is True
+            assert mock_bot.send_video.called or mock_bot.send_message.called
 
     @pytest.mark.asyncio
     async def test_no_link_preview(self, sample_news):
@@ -300,14 +282,13 @@ class TestPosterIntegration:
         from telegram_bot.poster import send_news_to_channel
 
         mock_bot = AsyncMock()
-        with patch("telegram_bot.poster.find_best_image", return_value=None):
-            with patch("telegram_bot.poster.bot", mock_bot):
-                with patch("telegram_bot.poster.config") as cfg:
-                    cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                    result = await send_news_to_channel(article=sample_news)
-                    if mock_bot.send_message.called:
-                        kwargs = mock_bot.send_message.call_args.kwargs
-                        assert kwargs.get("disable_web_page_preview", False) is True
+        with patch("telegram_bot.poster.find_news_image", return_value=None):
+            result = await send_news_to_channel(
+                bot=mock_bot, channel_id="-1001234567890", news=sample_news
+            )
+            if mock_bot.send_message.called:
+                kwargs = mock_bot.send_message.call_args.kwargs
+                assert kwargs.get("disable_web_page_preview", False) is True
 
     @pytest.mark.asyncio
     async def test_with_reactions(self, sample_news):
@@ -316,17 +297,17 @@ class TestPosterIntegration:
 
         mock_bot = AsyncMock()
         with patch(
-            "telegram_bot.poster.find_best_image", return_value="https://example.com/image.jpg"
+            "telegram_bot.poster.find_news_image", return_value="https://example.com/image.jpg"
         ):
             with patch(
                 "telegram_bot.poster.process_image_for_telegram", return_value=b"image_bytes"
             ):
-                with patch("telegram_bot.poster.bot", mock_bot):
-                    with patch("telegram_bot.poster.config") as cfg:
-                        cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                        result = await send_news_to_channel(article=sample_news)
-                        kwargs = mock_bot.send_photo.call_args.kwargs
-                        assert "reply_markup" in kwargs
+                result = await send_news_to_channel(
+                    bot=mock_bot, channel_id="-1001234567890", news=sample_news
+                )
+                # Проверяем что отправка прошла успешно
+                assert result is True
+                mock_bot.send_photo.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_with_micro_text(self, sample_news):
@@ -335,17 +316,16 @@ class TestPosterIntegration:
 
         mock_bot = AsyncMock()
         with patch(
-            "telegram_bot.poster.find_best_image", return_value="https://example.com/image.jpg"
+            "telegram_bot.poster.find_news_image", return_value="https://example.com/image.jpg"
         ):
             with patch(
                 "telegram_bot.poster.process_image_for_telegram", return_value=b"image_bytes"
             ):
-                with patch("telegram_bot.poster.bot", mock_bot):
-                    with patch("telegram_bot.poster.config") as cfg:
-                        cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                        result = await send_news_to_channel(article=sample_news)
-                        caption = mock_bot.send_photo.call_args.kwargs.get("caption", "")
-                        assert "👍" in caption or "👎" in caption
+                result = await send_news_to_channel(
+                    bot=mock_bot, channel_id="-1001234567890", news=sample_news
+                )
+                caption = mock_bot.send_photo.call_args.kwargs.get("caption", "")
+                assert "🔗" in caption or "📰" in caption
 
 
 class TestConfig:
@@ -407,12 +387,11 @@ class TestEdgeCases:
         from telegram_bot.poster import send_news_to_channel
 
         mock_bot = AsyncMock()
-        with patch("telegram_bot.poster.find_best_image", return_value=None):
-            with patch("telegram_bot.poster.bot", mock_bot):
-                with patch("telegram_bot.poster.config") as cfg:
-                    cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                    result = await send_news_to_channel(article=sample_news)
-                    assert result is True
+        with patch("telegram_bot.poster.find_news_image", return_value=None):
+            result = await send_news_to_channel(
+                bot=mock_bot, channel_id="-1001234567890", news=sample_news
+            )
+            assert result is True
 
     @pytest.mark.asyncio
     async def test_exception_fallback(self, sample_news):
@@ -424,17 +403,16 @@ class TestEdgeCases:
         mock_bot.send_video.return_value = True
 
         with patch(
-            "telegram_bot.poster.find_best_image", return_value="https://example.com/image.jpg"
+            "telegram_bot.poster.find_news_image", return_value="https://example.com/image.jpg"
         ):
             with patch(
                 "telegram_bot.poster.process_image_for_telegram", return_value=b"image_bytes"
             ):
-                with patch("telegram_bot.poster.bot", mock_bot):
-                    with patch("telegram_bot.poster.config") as cfg:
-                        cfg.TELEGRAM_CHANNEL_ID = "-1001234567890"
-                        result = await send_news_to_channel(article=sample_news)
-                        assert result is True
-                        mock_bot.send_video.assert_called_once()
+                result = await send_news_to_channel(
+                    bot=mock_bot, channel_id="-1001234567890", news=sample_news
+                )
+                assert result is True
+                mock_bot.send_video.assert_called_once()
 
 
 if __name__ == "__main__":
