@@ -213,8 +213,10 @@ class TestPublishPolicyIntegration:
         assert "storm" in reason
 
     def test_should_publish_orange_normal(self):
-        from utils.publish_policy import should_publish
+        from utils.publish_policy import _recent_publishes, should_publish
 
+        # Очищаем, чтобы не было влияния от других тестов
+        _recent_publishes.clear()
         allowed, _ = should_publish("orange", 7, "normal", False)
         assert allowed is True
 

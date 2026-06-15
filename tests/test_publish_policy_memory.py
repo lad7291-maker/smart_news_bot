@@ -24,10 +24,14 @@ class TestRecentPublishes:
         assert isinstance(_recent_publishes, list)
 
     def test_record_publish_adds_entry(self):
-        _recent_publishes.clear()
-        record_publish(score=8, title="Test Article", source="TestSource")
-        assert len(_recent_publishes) >= 1
-        entry = _recent_publishes[-1]
+        import utils.publish_policy as pp
+
+        pp._recent_publishes.clear()
+        pp.record_publish(score=8, title="Test Article", source="TestSource")
+        assert (
+            len(pp._recent_publishes) >= 1
+        ), f"Expected at least 1 entry, got {len(pp._recent_publishes)}"
+        entry = pp._recent_publishes[-1]
         assert entry["score"] == 8
         assert entry["title"] == "Test Article"
         assert entry["source"] == "TestSource"
