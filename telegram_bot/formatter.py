@@ -713,6 +713,20 @@ def _detect_topic_emoji(title, summary, source):
     return source_emoji.get(source, "📰")
 
 
+def _ai_covers_summary(ai_comment: str, summary: str) -> bool:
+    """Проверяет, покрывает ли AI-comment основное содержание summary."""
+    if not ai_comment or len(ai_comment) < 30:
+        return False
+    if not summary or len(summary) < 20:
+        return True  # summary пустой — AI покрывает всё
+    # Используем семантическое сравнение из deduplicator
+    from utils.deduplicator import _title_similarity
+
+    sim = _title_similarity(ai_comment, summary)
+    # Если AI comment похож на summary на 60%+ — считаем дублем
+    return sim >= 0.45
+
+
 def format_news_post(article):
     title = _escape_html(article.get("title", "").strip())
     summary = article.get("summary", "") or ""
@@ -732,9 +746,9 @@ def format_news_post(article):
     else:
         importance_emoji = "📌 "
 
-    # Возвращаем summary — он лучше AI-пересказа
+    # Возвращаем summary — он лучше AI-пересказа, НО только если AI не покрывает его
     summary_block = ""
-    if summary:
+    if summary and not _ai_covers_summary(ai_comment, summary):
         summary = " ".join(summary.split())
         if len(summary) > 20:
             if len(summary) > 500:
