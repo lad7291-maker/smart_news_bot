@@ -34,3 +34,12 @@ class TestCacheManager:
         stats = cache.get_processing_stats()
         assert stats["processed"] >= 1
         cache.close()
+
+    def test_image_used_tracking(self, tmp_db_path):
+        cache = CacheManager(db_path=tmp_db_path)
+        img_url = "https://example.com/photo.jpg"
+        assert cache.is_image_used(img_url, hours=24) is False
+        cache.mark_image_used(img_url)
+        assert cache.is_image_used(img_url, hours=24) is True
+        assert cache.is_image_used(img_url, hours=0) is False
+        cache.close()

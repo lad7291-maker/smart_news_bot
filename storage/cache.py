@@ -81,6 +81,19 @@ class CacheManager:
         )
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_link_hash ON processed_links(link_hash)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_status ON processed_links(status)")
+        # Image dedup table
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS used_images (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url_hash TEXT UNIQUE NOT NULL,
+                image_url TEXT NOT NULL,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """
+        )
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_url_hash ON used_images(url_hash)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_used_at ON used_images(used_at)")
         self.conn.commit()
 
     def _generate_hash(self, link: str) -> str:
@@ -246,6 +259,44 @@ class CacheManager:
             return False
         except sqlite3.Error as e:
             logger.error(f"Ошибка при проверке заголовка: {e}")
+            return False
+
+    def is_image_used(self, image_url: str, hours: int = 24) -> bool:
+        """Проверяет, использовалось ли изображение за последние N часов."""
+        if not image_url:
+            return False
+        url_hash = self._generate_hash(image_url)
+        since = datetime.now() - timedelta(hours=hours)
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "SELECT 1 FROM used_images WHERE url_hash = ? AND used_at >= ?",
+                (url_hash, since.isoformat()),
+            )
+            return cursor.fetchone() is not None
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при проверке изображения: {e}")
+            return False
+
+    def mark_image_used(self, image_url: str) -> bool:
+        """Отмечает изображение как использованное."""
+        if not image_url:
+            return False
+        url_hash = self._generate_hash(image_url)
+        now = datetime.now().isoformat()
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT OR REPLACE INTO used_images (url_hash, image_url, used_at)
+                VALUES (?, ?, ?)
+            """,
+                (url_hash, image_url, now),
+            )
+            self.conn.commit()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Ошибка при пометке изображения: {e}")
             return False
 
     def _normalize_title(self, title: str) -> str:

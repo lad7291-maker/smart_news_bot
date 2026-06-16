@@ -762,12 +762,21 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
     source = article.get("source", "")
     link = article.get("link", "") or article.get("url", "")
 
+    # Helper: проверяем, не использовалось ли изображение недавно
+    def _check_image_used(url: str, source_label: str) -> bool:
+        from storage.cache import cache_manager
+
+        if cache_manager.is_image_used(url, hours=24):
+            logger.info(f"🔄 Изображение уже использовалось (24h), пропускаем: {url[:60]}...")
+            return True
+        return False
+
     # === ШАГ 0: Скриншот твита (если новость про твит) ===
     try:
         from utils.tweet_screenshot import find_tweet_screenshot
 
         tweet_screenshot = await find_tweet_screenshot(article)
-        if tweet_screenshot:
+        if tweet_screenshot and not _check_image_used(tweet_screenshot, "tweet"):
             logger.info(f"📸 Скриншот твита: {tweet_screenshot[:60]}...")
             return tweet_screenshot
     except Exception as e:
@@ -781,12 +790,17 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
             result = await extract_image_with_score(entry, link, title)
             if result:
                 url, score, src = result
-                if score >= 55:  # OG надёжный домен или хороший RSS
+                # Проверка на placeholder / generic изображения в RSS
+                if src == "rss" and _is_rss_placeholder(url):
+                    logger.info(f"🚫 RSS placeholder отклонён: {url[:60]}...")
+                elif score >= 55 and not _check_image_used(
+                    url, src
+                ):  # OG надёжный домен или хороший RSS
                     logger.info(
                         f"🖼 RSS/OG/HTML изображение (score={score}, source={src}): {url[:60]}..."
                     )
                     return url
-                elif score >= 40:  # Article img — приемлемо
+                elif score >= 40 and not _check_image_used(url, src):  # Article img — приемлемо
                     logger.info(f"🖼 Article image (score={score}): {url[:60]}...")
                     return url
         except Exception as e:
@@ -795,7 +809,7 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
     # === ШАГ 2: Stock API ===
     try:
         stock_url = await find_best_stock_image(title, summary)
-        if stock_url:
+        if stock_url and not _check_image_used(stock_url, "stock"):
             logger.info(f"🖼 Stock изображение: {stock_url[:60]}...")
             return stock_url
     except Exception as e:
@@ -804,7 +818,7 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
     # === ШАГ 3: Скриншоты источников (новый!) ===
     try:
         screenshot_url = await find_screenshot_image(article)
-        if screenshot_url:
+        if screenshot_url and not _check_image_used(screenshot_url, "screenshot"):
             logger.info(f"📸 Скриншот источника: {screenshot_url[:60]}...")
             return screenshot_url
     except Exception as e:
@@ -813,7 +827,7 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
     # === ШАГ 4: SearXNG ===
     try:
         searx_url = await find_best_image(title, summary, max_results=10)
-        if searx_url:
+        if searx_url and not _check_image_used(searx_url, "searxng"):
             logger.info(f"🖼 SearXNG изображение: {searx_url[:60]}...")
             return searx_url
     except Exception as e:
@@ -821,9 +835,34 @@ async def find_news_image(article: Dict[str, Any]) -> Optional[str]:
 
     # === ШАГ 5: Fallback ===
     fallback_url = get_fallback_image_url(source)
-    if fallback_url:
+    if fallback_url and not _check_image_used(fallback_url, "fallback"):
         logger.info(f"🔄 Fallback изображение для {source}: {fallback_url[:60]}...")
         return fallback_url
 
     logger.info(f"🚫 Изображение не найдено для: {title[:60]}...")
     return None
+
+
+def _is_rss_placeholder(url: str) -> bool:
+    """Проверяет, является ли RSS-изображение placeholder'ом (логотип, generic)."""
+    if not url:
+        return True
+    url_lower = url.lower()
+    placeholder_patterns = [
+        "placeholder",
+        "logo",
+        "default",
+        "generic",
+        "cover",
+        "article-covers",
+        "sharing",
+        "og-img",
+        "og_image",
+        "social",
+        "card",
+        "preview",
+        "thumb_large",
+        "flagcdn",
+        "cryptologos",
+    ]
+    return any(p in url_lower for p in placeholder_patterns)

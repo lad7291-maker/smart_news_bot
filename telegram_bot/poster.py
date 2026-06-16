@@ -123,6 +123,13 @@ async def send_news_to_channel(
                         os.unlink(tmp_path)
                     except Exception:
                         pass
+                    # Mark image as used for dedup
+                    try:
+                        from storage.cache import cache_manager
+
+                        cache_manager.mark_image_used(image_url)
+                    except Exception:
+                        pass
                     return True
         except Exception as e:
             logger.warning(f"Photo send failed: {e}")
