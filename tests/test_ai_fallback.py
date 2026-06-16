@@ -25,13 +25,14 @@ class TestAIFallback:
         }
 
     def test_normal_ai_comment_used(self):
-        """Обычный AI-комментарий используется как есть."""
+        """Обычный AI-комментарий используется вместе с summary."""
         a = self._article(
             ai_comment="This is an AI analysis of the news.", summary="Original summary text."
         )
         text = format_news_post(a)
         assert "This is an AI analysis" in text
-        assert "Original summary" not in text
+        # Summary теперь всегда показывается (📌 блок)
+        assert "Original summary" in text
 
     def test_unavailable_ai_uses_summary(self):
         """При недоступности AI используется summary."""

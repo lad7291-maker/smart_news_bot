@@ -334,6 +334,11 @@ _NAME_MAP = {
     "кндр": "nkorea",
     "украина": "ukraine",
     "украинск": "ukraine",
+    "киев": "kyiv",
+    "киева": "kyiv",
+    "киеве": "kyiv",
+    "київ": "kyiv",
+    "kyiv": "kyiv",
     "европа": "europe",
     "европейск": "europe",
     "ес": "eu",
@@ -420,6 +425,245 @@ _NAME_MAP = {
     "нато": "nato",
     "опек": "opec",
     "есб": "ecb",
+    # События / темы (для лучшей дедупликации)
+    "учения": "military_exercise",
+    "война": "war",
+    "конфликт": "conflict",
+    "сделка": "deal",
+    "соглашение": "deal",
+    "переговоры": "negotiations",
+    "саммит": "summit",
+    "взрыв": "explosion",
+    "удар": "strike",
+    "атака": "attack",
+    "санкции": "sanction",
+    "пошлины": "tariff",
+    "тарифы": "tariff",
+    "тариф": "tariff",
+    "тарифный": "tariff",
+    "тарифная": "tariff",
+    "выборы": "election",
+    "отставка": "resignation",
+    "кризис": "crisis",
+    "дефолт": "default",
+    "рецессия": "recession",
+    "инфляция": "inflation",
+    "ставка": "rate",
+    "ipo": "ipo",
+    "слияние": "merger",
+    "поглощение": "acquisition",
+    "банкротство": "bankruptcy",
+    "пожар": "fire",
+    "авария": "accident",
+    "крушение": "crash",
+    "землетрясение": "earthquake",
+    "теракт": "terror_attack",
+    "эвакуация": "evacuation",
+    "беженцы": "refugees",
+    "вступление": "joining",
+    "выход": "exit",
+    "реформа": "reform",
+    "закон": "law",
+    "запрет": "ban",
+    "суд": "court",
+    "приговор": "verdict",
+    "арест": "arrest",
+    "расследование": "investigation",
+    "перемирие": "ceasefire",
+    "обмен": "exchange",
+    "освобождение": "release",
+    "убежище": "asylum",
+    "виза": "visa",
+    "таможня": "customs",
+    "иммиграция": "immigration",
+    "депортация": "deportation",
+    "черный список": "blacklist",
+    "активы": "assets",
+    "конфискация": "confiscation",
+    "национализация": "nationalization",
+    "приватизация": "privatization",
+    "амнистия": "amnesty",
+    "компенсация": "compensation",
+    "штраф": "fine",
+    "судебный иск": "lawsuit",
+    "апелляция": "appeal",
+    "отмена": "cancellation",
+    "расторжение": "termination",
+    "выход": "withdrawal",
+    "восстановление": "restoration",
+    "модернизация": "modernization",
+    "реорганизация": "reorganization",
+    "продажа": "sale",
+    "покупка": "purchase",
+    "контракт": "contract",
+    "меморандум": "memorandum",
+    "декларация": "declaration",
+    "коммюнике": "communique",
+    "заявление": "statement",
+    "речь": "speech",
+    "доклад": "report",
+    "пресс-конференция": "press_conference",
+    "интервью": "interview",
+    "комментарий": "comment",
+    "предложение": "proposal",
+    "инициатива": "initiative",
+    "план": "plan",
+    "программа": "program",
+    "стратегия": "strategy",
+    "доктрина": "doctrine",
+    "концепция": "concept",
+    "политика": "policy",
+    "регламент": "regulation",
+    "стандарт": "standard",
+    "требование": "requirement",
+    "гарантия": "guarantee",
+    "защита": "protection",
+    "восстановление": "restoration",
+    "строительство": "construction",
+    "создание": "creation",
+    "открытие": "opening",
+    "запуск": "launch",
+    "начало": "start",
+    "дебют": "debut",
+    "премьера": "premiere",
+    "выставка": "exhibition",
+    "конференция": "conference",
+    "форум": "forum",
+    "конгресс": "congress",
+    "совет": "council",
+    "комитет": "committee",
+    "комиссия": "commission",
+    "группа": "group",
+    "ассоциация": "association",
+    "союз": "union",
+    "федерация": "federation",
+    "коалиция": "coalition",
+    "блок": "bloc",
+    "партия": "party",
+    "движение": "movement",
+    "альянс": "alliance",
+    "пакт": "pact",
+    "договор": "treaty",
+    "конвенция": "convention",
+    "протокол": "protocol",
+    "соглашение": "agreement",
+    # Английские topic keywords (для кросс-язычной дедупликации)
+    "negotiations": "negotiations",
+    "ceasefire": "ceasefire",
+    "tariff": "tariff",
+    "tariffs": "tariff",
+    "sanctions": "sanction",
+    "election": "election",
+    "resignation": "resignation",
+    "crisis": "crisis",
+    "default": "default",
+    "recession": "recession",
+    "inflation": "inflation",
+    "rate": "rate",
+    "merger": "merger",
+    "acquisition": "acquisition",
+    "bankruptcy": "bankruptcy",
+    "fire": "fire",
+    "accident": "accident",
+    "crash": "crash",
+    "earthquake": "earthquake",
+    "evacuation": "evacuation",
+    "refugees": "refugees",
+    "reform": "reform",
+    "law": "law",
+    "ban": "ban",
+    "court": "court",
+    "verdict": "verdict",
+    "arrest": "arrest",
+    "investigation": "investigation",
+    "exchange": "exchange",
+    "release": "release",
+    "asylum": "asylum",
+    "visa": "visa",
+    "customs": "customs",
+    "immigration": "immigration",
+    "deportation": "deportation",
+    "blacklist": "blacklist",
+    "assets": "assets",
+    "confiscation": "confiscation",
+    "nationalization": "nationalization",
+    "privatization": "privatization",
+    "amnesty": "amnesty",
+    "compensation": "compensation",
+    "fine": "fine",
+    "lawsuit": "lawsuit",
+    "appeal": "appeal",
+    "cancellation": "cancellation",
+    "termination": "termination",
+    "withdrawal": "withdrawal",
+    "restoration": "restoration",
+    "modernization": "modernization",
+    "reorganization": "reorganization",
+    "sale": "sale",
+    "purchase": "purchase",
+    "contract": "contract",
+    "memorandum": "memorandum",
+    "declaration": "declaration",
+    "communique": "communique",
+    "statement": "statement",
+    "speech": "speech",
+    "report": "report",
+    "press_conference": "press_conference",
+    "interview": "interview",
+    "comment": "comment",
+    "proposal": "proposal",
+    "initiative": "initiative",
+    "plan": "plan",
+    "program": "program",
+    "strategy": "strategy",
+    "doctrine": "doctrine",
+    "concept": "concept",
+    "policy": "policy",
+    "regulation": "regulation",
+    "standard": "standard",
+    "requirement": "requirement",
+    "guarantee": "guarantee",
+    "protection": "protection",
+    "construction": "construction",
+    "creation": "creation",
+    "opening": "opening",
+    "launch": "launch",
+    "start": "start",
+    "debut": "debut",
+    "premiere": "premiere",
+    "exhibition": "exhibition",
+    "conference": "conference",
+    "forum": "forum",
+    "congress": "congress",
+    "council": "council",
+    "committee": "committee",
+    "commission": "commission",
+    "group": "group",
+    "association": "association",
+    "union": "union",
+    "federation": "federation",
+    "coalition": "coalition",
+    "bloc": "bloc",
+    "party": "party",
+    "movement": "movement",
+    "alliance": "alliance",
+    "pact": "pact",
+    "treaty": "treaty",
+    "convention": "convention",
+    "protocol": "protocol",
+    "agreement": "agreement",
+    "war": "war",
+    "conflict": "conflict",
+    "deal": "deal",
+    "summit": "summit",
+    "explosion": "explosion",
+    "strike": "strike",
+    "attack": "attack",
+    "ipo": "ipo",
+    "military_exercise": "military_exercise",
+    "joining": "joining",
+    "exit": "exit",
+    "terror_attack": "terror_attack",
 }
 
 
@@ -478,7 +722,7 @@ def _extract_translatable_keywords(title: str) -> Set[str]:
     for ru_term, canonical in _NAME_MAP.items():
         if " " in ru_term and ru_term in text:
             keywords.add(canonical)
-        elif " " not in ru_term and ru_term in text.split():
+        elif " " not in ru_term and ru_term in text:
             keywords.add(canonical)
 
     # Тикеры / аббревиатуры (2-6 заглавных букв)
@@ -563,7 +807,7 @@ def _title_similarity(a: str, b: str) -> float:
 
 
 def deduplicate_articles(
-    articles: List[Dict[str, Any]], similarity_threshold: float = 0.85
+    articles: List[Dict[str, Any]], similarity_threshold: float = 0.75
 ) -> List[Dict[str, Any]]:
     """
     Убирает дублирующиеся новости из списка.
@@ -572,6 +816,7 @@ def deduplicate_articles(
     1. Сортирует по score (высокий первым) и свежести
     2. Для каждой новости проверяет, нет ли похожей уже в результате
     3. Если похожая найдена (similarity >= threshold) — пропускает
+    4. Также проверяет URL (разные источники часто агрегируют одну статью)
 
     Возвращает список уникальных новостей.
     """
@@ -592,10 +837,31 @@ def deduplicate_articles(
     _topic_history = []  # [(entities_set, timestamp), ...]
     TOPIC_COOLDOWN_HOURS = 6
 
+    # URL dedup: проверяем, не ведут ли ссылки на одну и ту же статью
+    _url_patterns = set()
+
     for article in sorted_articles:
         title = article.get("title", "")
+        link = article.get("link", "")
         if not title:
             continue
+
+        # === URL DEDUP ===
+        # Извлекаем "основной" путь из URL (без домена, query params)
+        if link:
+            # Убираем протокол и домен, оставляем путь
+            url_path = re.sub(r"^https?://[^/]+", "", link)
+            # Убираем query params и hash
+            url_path = url_path.split("?")[0].split("#")[0]
+            # Убираем trailing slash
+            url_path = url_path.rstrip("/")
+            # Пустой путь (корневой URL) — не дедуплицируем, разные домены = разные статьи
+            if url_path and url_path in _url_patterns:
+                logger.debug(f"🔄 URL дубль: '{title[:60]}...' → тот же путь: {url_path}")
+                skipped += 1
+                continue
+            if url_path:
+                _url_patterns.add(url_path)
 
         # === TOPIC COOLDOWN ===
         article_entities = {_canonical_name(e) for e in _extract_key_entities(title)}

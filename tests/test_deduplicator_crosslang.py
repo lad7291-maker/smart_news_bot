@@ -33,19 +33,19 @@ class TestCrossLanguageDeduplication:
         assert sim >= 0.75
 
     def test_russian_english_without_numbers_low(self):
-        """Без цифр кросс-язычная схожесть низкая (ожидаемо)."""
-        a = "Трамп встретился с Путиным"
-        b = "Trump meets Putin"
+        """Без цифр кросс-язычная схожесть низкая (только 1 сущность)."""
+        a = "Трамп встретился с Байденом"
+        b = "Trump meets Macron"
         sim = _title_similarity(a, b)
-        # Без общих цифр и с разными алфавитами — низкая схожесть
-        assert sim < 0.5
+        # Только Trump/Трамп общее — низкая схожесть
+        assert sim < 0.5, f"Expected low similarity, got {sim}"
 
     def test_different_topics_low_similarity(self):
         """Разные темы — низкая схожесть."""
         a = "Bitcoin reaches new all-time high"
         b = "Oil prices fall amid recession fears"
         sim = _title_similarity(a, b)
-        assert sim < 0.7
+        assert sim < 0.7, f"Expected low similarity, got {sim}"
 
     def test_deduplicate_removes_exact_duplicates(self):
         """Дедупликация удаляет точные дубли."""

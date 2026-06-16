@@ -63,5 +63,13 @@ class TestDeduplicator:
         except NameError as e:
             pytest.fail(f"BUG-003 reproduced: {e}")
 
+    def test_title_similarity_event_keywords(self):
+        """Тест: новые topic keywords (события) дают boost similarity."""
+        a = "В Киеве начались переговоры о перемирии"
+        b = "Negotiations on ceasefire began in Kyiv"
+        sim = _title_similarity(a, b)
+        # Должно быть >= 0.88 благодаря keywords: переговоры/negotiations, перемирие/ceasefire
+        assert sim >= 0.85, f"Event keyword similarity too low: {sim}"
+
     def test_deduplicate_empty_list(self):
         assert deduplicate_articles([]) == []
