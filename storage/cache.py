@@ -246,11 +246,11 @@ class CacheManager:
                 if not existing_normalized:
                     continue
 
-                # Простое сравнение: если нормализованные заголовки совпадают на 85%+
-                from difflib import SequenceMatcher
+                # Используем семантическое сравнение из deduplicator (entity + keyword matching)
+                from utils.deduplicator import _title_similarity
 
-                sim = SequenceMatcher(None, normalized, existing_normalized).ratio()
-                if sim >= 0.85:
+                sim = _title_similarity(title, existing_title)
+                if sim >= 0.75:
                     logger.info(
                         f"🔄 Дубль по заголовку (sim={sim:.2f}): '{title[:60]}...' → похож на '{existing_title[:60]}...'"
                     )
