@@ -27,6 +27,18 @@ class TestCacheManager:
         assert cache.is_title_processed(title1, hours=24) is True
         cache.close()
 
+    def test_title_duplicate_detection_semantic(self, tmp_db_path):
+        """Тест семантического детектирования дублей (разные заголовки, одна тема)."""
+        cache = CacheManager(db_path=tmp_db_path)
+        # Первая новость — RT
+        title1 = "Путин поручил Мурашко оказать помощь пострадавшим в теракте ВСУ под Брянском"
+        cache.mark_processing("https://russian.rt.com/1", "rss", "RT", title1)
+        cache.mark_processed("https://russian.rt.com/1", success=True)
+        # Вторая новость — РИА (другой источник, другой заголовок, та же тема)
+        title2 = "Путин поручил оказать помощь пострадавшим при атаке ВСУ в Брянской области"
+        assert cache.is_title_processed(title2, hours=24) is True
+        cache.close()
+
     def test_stats_after_insert(self, tmp_db_path):
         cache = CacheManager(db_path=tmp_db_path)
         cache.mark_processing("https://a.com", "rss", "A", "Title A")
