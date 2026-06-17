@@ -175,6 +175,40 @@ class TestProcessImageForTelegram:
                 article_title="Test",
                 source="searxng",
             )
+            # Однотонное изображение теперь отклоняется как битое
+            assert result is None
+
+        asyncio.run(_run())
+
+    @patch("utils.image_processor.download_image")
+    @patch("utils.image_processor.check_image_freshness")
+    def test_successful_processing_with_gradient(self, mock_check, mock_download):
+        """Тест с изображением, содержащим градиент (проходит валидацию)."""
+
+        async def _run():
+            mock_check.return_value = ImageCheckResult(
+                url="https://example.com/photo.jpg",
+                is_accessible=True,
+                is_fresh=True,
+                content_type="image/jpeg",
+                last_modified=None,
+                size_bytes=12345,
+                width=None,
+                height=None,
+            )
+            # Создаём изображение с градиентом (не однотонное, много цветов)
+            img = Image.new("RGB", (1600, 900))
+            pixels = img.load()
+            for i in range(1600):
+                for j in range(900):
+                    pixels[i, j] = (i % 256, j % 256, (i + j) % 256)
+            mock_download.return_value = img
+
+            result = await process_image_for_telegram(
+                "https://example.com/photo.jpg",
+                article_title="Test",
+                source="searxng",
+            )
             assert result is not None
             assert isinstance(result, bytes)
 

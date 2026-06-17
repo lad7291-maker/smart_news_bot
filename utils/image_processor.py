@@ -396,6 +396,7 @@ async def process_image_for_telegram(
     # Шаг 0b: Проверка кэша скриншотов (если URL — это статья, а не изображение)
     from utils.screenshot_generator import _get_cache_path as _get_screenshot_cache_path
     from utils.screenshot_generator import _is_cache_valid as _is_screenshot_cache_valid
+    from utils.screenshot_generator import _is_valid_screenshot
 
     screenshot_cache = _get_screenshot_cache_path(image_url)
     if _is_screenshot_cache_valid(screenshot_cache):
@@ -407,6 +408,15 @@ async def process_image_for_telegram(
             img = Image.open(__import__("io").BytesIO(screenshot_bytes))
             if img.mode != "RGB":
                 img = img.convert("RGB")
+            # Проверяем, что скриншот не битый
+            if not _is_valid_screenshot(img):
+                logger.warning(f"🚫 Битый скриншот в кэше, удаляем: {image_url[:60]}...")
+                # Удаляем битый кэш
+                try:
+                    os.remove(screenshot_cache)
+                except Exception:
+                    pass
+                return None
             img = crop_to_aspect(img, target_aspect)
             img = resize_if_needed(img)
             # Скриншоты без водяного знака (это скриншот источника)
@@ -429,6 +439,13 @@ async def process_image_for_telegram(
     # Шаг 2: Скачивание
     img = await download_image(image_url)
     if img is None:
+        return None
+
+    # Шаг 2b: Проверка на битое/пустое изображение
+    from utils.screenshot_generator import _is_valid_screenshot
+
+    if not _is_valid_screenshot(img):
+        logger.warning(f"🚫 Изображение битое/пустое, отклоняем: {image_url[:60]}...")
         return None
 
     # Шаг 3: CLIP — семантическая релевантность (P3-006: truncation до 200 символов для 77 токенов CLIP)

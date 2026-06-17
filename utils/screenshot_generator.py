@@ -374,6 +374,73 @@ async def _screenshot_article_element(page) -> Optional[bytes]:
     return None
 
 
+def _is_valid_screenshot(img: Image.Image) -> bool:
+    """
+    Проверяет, что скриншот не является битым/блокировочным/пустым.
+
+    Проверки:
+    1. Не слишком маленький (менее 10KB обычно — блокировочная страница)
+    2. Не однотонный/белый (пустой скриншот)
+    3. Не серый экран ошибки
+    """
+    try:
+        # Проверяем размер
+        width, height = img.size
+        if width < 100 or height < 100:
+            logger.info(f"🚫 Скриншот слишком маленький ({width}x{height}), отклоняем")
+            return False
+
+        # Проверяем на однотонность/пустоту
+        # Конвертируем в RGB и берём миниатюру для анализа
+        img_rgb = img.convert("RGB") if img.mode != "RGB" else img
+
+        # Уменьшаем для быстрого анализа (но не слишком сильно чтобы сохранить детали)
+        small = img_rgb.resize((100, 100))
+        pixels = list(small.get_flattened_data())
+
+        # Считаем средний цвет и стандартное отклонение
+        r_vals = [p[0] for p in pixels]
+        g_vals = [p[1] for p in pixels]
+        b_vals = [p[2] for p in pixels]
+
+        avg_r = sum(r_vals) / len(r_vals)
+        avg_g = sum(g_vals) / len(g_vals)
+        avg_b = sum(b_vals) / len(b_vals)
+
+        # Стандартное отклонение
+        def stddev(vals, avg):
+            return (sum((x - avg) ** 2 for x in vals) / len(vals)) ** 0.5
+
+        std_r = stddev(r_vals, avg_r)
+        std_g = stddev(g_vals, avg_g)
+        std_b = stddev(b_vals, avg_b)
+        avg_std = (std_r + std_g + std_b) / 3
+
+        # Если изображение почти однотонное (std < 3) — скорее всего пустое/белое
+        if avg_std < 3:
+            logger.info(f"🚫 Скриншот однотонный (std={avg_std:.1f}), отклоняем")
+            return False
+
+        # Если изображение очень светлое (белый фон) и мало деталей
+        avg_brightness = (avg_r + avg_g + avg_b) / 3
+        if avg_brightness > 250 and avg_std < 10:
+            logger.info(
+                f"🚫 Скриншот почти белый (brightness={avg_brightness:.1f}, std={avg_std:.1f}), отклоняем"
+            )
+            return False
+
+        # Дополнительная проверка: количество уникальных цветов
+        unique_colors = len(set(pixels))
+        if unique_colors < 50:
+            logger.info(f"🚫 Скриншот слишком мало цветов ({unique_colors}), отклоняем")
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка проверки скриншота: {e}")
+        return True  # В случае ошибки — пропускаем
+
+
 async def process_screenshot_for_telegram(
     url: str,
     article_title: str = "",
@@ -401,6 +468,11 @@ async def process_screenshot_for_telegram(
         img = Image.open(__import__("io").BytesIO(png_bytes))
         if img.mode != "RGB":
             img = img.convert("RGB")
+
+        # Проверяем, что скриншот не битый (не блокировочная страница, не пустой)
+        if not _is_valid_screenshot(img):
+            logger.warning(f"🚫 Скриншот отклонён (битый/блокировочный): {url[:60]}...")
+            return None
 
         # Обрезаем под 16:9 для Telegram
         img = crop_to_aspect(img, 16 / 9)
