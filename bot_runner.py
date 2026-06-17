@@ -632,20 +632,8 @@ async def job_collect_news() -> None:
             logger.info("😴 Нет свежих новостей")
             return
 
-        # --- ПЕРЕВОД ---
-        logger.info("🌐 Перевод иностранных новостей...")
-        translated_news = []
-        for article in all_news:
-            title = article.get("title", "") or ""
-            summary = article.get("summary", "") or ""
-            if not is_russian(f"{title} {summary}"):
-                article["title"] = translate_to_russian(title) or title
-                article["summary"] = translate_to_russian(summary) or summary
-                article["translated"] = True
-            translated_news.append(article)
-
-        # --- ФИЛЬТРАЦИЯ ---
-        filtered_news = [a for a in translated_news if filter_article(a)]
+        # --- ФИЛЬТРАЦИЯ (перед переводом, чтобы переводить только то что публикуем) ---
+        filtered_news = [a for a in all_news if filter_article(a)]
         logger.info(f"📊 Всего свежих: {len(all_news)}, после фильтра: {len(filtered_news)}")
 
         if not filtered_news:
@@ -674,6 +662,16 @@ async def job_collect_news() -> None:
 
         if MAX_POSTS_PER_RUN is not None:
             filtered_news = filtered_news[:MAX_POSTS_PER_RUN]
+
+        # --- ПЕРЕВОД (только отфильтрованных и отсортированных — те что реально публикуем) ---
+        logger.info(f"🌐 Перевод {len(filtered_news)} новостей перед публикацией...")
+        for article in filtered_news:
+            title = article.get("title", "") or ""
+            summary = article.get("summary", "") or ""
+            if not is_russian(f"{title} {summary}"):
+                article["title"] = translate_to_russian(title) or title
+                article["summary"] = translate_to_russian(summary) or summary
+                article["translated"] = True
 
         # --- ПОЛИТИКА ПУБЛИКАЦИИ ---
         mode = publish_policy.get_mode()
