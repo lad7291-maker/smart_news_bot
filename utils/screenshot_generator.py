@@ -175,11 +175,16 @@ async def take_screenshot(url: str, timeout: float = 30.0) -> Optional[bytes]:
             # Специальная обработка для BBC
             await _accept_cookies_bbc(page)
 
-            # Делаем скриншот viewport (не full page — для Telegram лучше фиксированный размер)
-            screenshot_bytes = await page.screenshot(
-                type="png",
-                full_page=SCREENSHOT_FULL_PAGE,
-            )
+            # Пробуем сделать скриншот только статьи (без шапки, меню, баннеров)
+            article_screenshot = await _screenshot_article_element(page)
+            if article_screenshot:
+                screenshot_bytes = article_screenshot
+            else:
+                # Fallback: скриншот viewport как раньше
+                screenshot_bytes = await page.screenshot(
+                    type="png",
+                    full_page=SCREENSHOT_FULL_PAGE,
+                )
 
             await browser.close()
 
@@ -285,6 +290,88 @@ async def _accept_cookies_bbc(page):
     except Exception:
         pass
     return False
+
+
+async def _screenshot_article_element(page) -> Optional[bytes]:
+    """
+    Пытается сделать скриншот только элемента со статьёй (не всей страницы).
+    Возвращает PNG bytes или None если не удалось найти элемент.
+    """
+    # CSS-селекторы для основного контента статьи на разных сайтах
+    article_selectors = [
+        # Общие
+        "article",
+        "main",
+        "[role='main']",
+        ".article-content",
+        ".post-content",
+        ".entry-content",
+        ".story-body",
+        ".news-text",
+        "[itemprop='articleBody']",
+        ".content",
+        # Интерфакс
+        ".article",
+        ".article__text",
+        ".article__content",
+        # РИА
+        ".article__block",
+        ".article__article-image",
+        # RT
+        ".article__text",
+        ".article__summary",
+        # ТАСС
+        ".news-content",
+        ".text-content",
+        # Лента
+        ".b-topic__content",
+        ".topic-content",
+        # РБК
+        ".article__content",
+        ".article__text",
+        # Коммерсант
+        ".article_text",
+        ".doc__text",
+        # Медуза
+        ".GeneralMaterial-module__content",
+        ".MaterialContent",
+        # BBC
+        "[data-component='text-block']",
+        ".ssrcss-7uxr49-RichTextContainer",
+        # Reuters
+        ".article-body__content__17Yit",
+        ".ArticleBodyWrapper",
+        # NYT
+        ".articleBody",
+        "section[name='articleBody']",
+        # Guardian
+        ".article-body-commercial-selector",
+        # Bloomberg
+        ".body-content",
+        # CNN
+        ".article__content",
+        ".zn-body__paragraph",
+        # Al Jazeera
+        ".article-content",
+        # Politico
+        ".story-text",
+        # Axios
+        ".article-body",
+    ]
+
+    for selector in article_selectors:
+        try:
+            element = await page.query_selector(selector)
+            if element:
+                # Проверяем, что элемент видимый и имеет размер
+                box = await element.bounding_box()
+                if box and box["width"] > 200 and box["height"] > 200:
+                    screenshot = await element.screenshot(type="png")
+                    logger.info(f"📸 Скриншот элемента {selector}: {len(screenshot)} bytes")
+                    return screenshot
+        except Exception:
+            continue
+    return None
 
 
 async def process_screenshot_for_telegram(
