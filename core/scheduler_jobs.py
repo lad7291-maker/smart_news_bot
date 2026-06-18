@@ -546,12 +546,17 @@ async def job_collect_news() -> None:
             min_interval = {"red": 600, "orange": 600, "yellow": 3600}.get(level, 600)
 
             # Равномерно распределяем новости на TARGET_SPAN_MINUTES (60 мин)
+            # Все publishable новости ДОЛЖНЫ уложиться в час, даже если interval < min_interval
             if total_publishable > 1:
                 step_seconds = (TARGET_SPAN_MINUTES * 60) // total_publishable
-                # Не меньше min_interval, не больше 20 мин
-                step_seconds = max(min_interval, min(step_seconds, 1200))
+                # Максимум 15 мин между постами (чтобы не слишком редко)
+                step_seconds = min(step_seconds, 900)
             else:
                 step_seconds = min_interval
+
+            # Но первую новость всё равно не публикуем мгновенно — минимум 5 мин подготовки
+            if scheduled_count == 0:
+                step_seconds = max(step_seconds, 300)
 
             run_time = current_time + timedelta(seconds=step_seconds)
 
