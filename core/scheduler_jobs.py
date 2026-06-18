@@ -1,3 +1,27 @@
+def _strip_engagement_phrases(text: str) -> str:
+    """Удаляет engagement-вопросы из AI-комментария."""
+    phrases = [
+        "Обсуждаем?",
+        "Согласны?",
+        "Как считаете?",
+        "Как думаете?",
+        "Верите?",
+        "Поддерживаете?",
+        "А вы?",
+        "А у вас?",
+        "Что думаете?",
+        "Ваше мнение?",
+        "Пишите в комментариях",
+        "Делитесь мнением",
+        "Ждем ваше мнение",
+        "Ждём ваше мнение",
+        "А как вы?",
+    ]
+    for phrase in phrases:
+        text = text.replace(phrase, "").strip()
+    return text
+
+
 """
 Scheduler jobs для Smart News Bot.
 P1-001: Вынесены из bot_runner.py.
@@ -342,7 +366,7 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
             ai_comment = ""
             image_url = existing_image if existing_image and existing_image_score >= 65 else None
 
-        article["ai_comment"] = ai_comment
+        article["ai_comment"] = _strip_engagement_phrases(ai_comment)
         if existing_image and existing_image_score >= 65:
             article["image_url"] = existing_image
             article["image_source"] = existing_image_source or "rss"
