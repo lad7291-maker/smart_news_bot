@@ -499,10 +499,22 @@ async def job_collect_news() -> None:
         # Планирование
         base_time = datetime.now()
         current_time = base_time
-        MIN_POST_INTERVAL = 20
+        MIN_POST_INTERVAL = 600
         MAX_QUEUE_MINUTES = 120
+        TARGET_SPAN_MINUTES = 60  # растягиваем публикации на 1 час
         scheduled_count = 0
         yellow_articles = []
+
+        # Считаем сколько red/orange новостей будет опубликовано
+        publishable_articles = [
+            a
+            for a in filtered_news
+            if a.get("link")
+            and not cache_manager.is_processed(a.get("link", ""))
+            and not cache_manager.is_title_processed(a.get("title", ""), hours=12)
+            and publish_policy.get_publish_level(a["score"]) != "yellow"
+        ]
+        total_publishable = len(publishable_articles)
 
         for article in filtered_news:
             link = article.get("link")
@@ -531,8 +543,17 @@ async def job_collect_news() -> None:
                 yellow_articles.append(article)
                 continue
 
-            min_interval = {"red": 300, "orange": 300, "yellow": 3600}.get(level, 300)
-            run_time = current_time + timedelta(seconds=max(delay_seconds, min_interval))
+            min_interval = {"red": 600, "orange": 600, "yellow": 3600}.get(level, 600)
+
+            # Равномерно распределяем новости на TARGET_SPAN_MINUTES (60 мин)
+            if total_publishable > 1:
+                step_seconds = (TARGET_SPAN_MINUTES * 60) // total_publishable
+                # Не меньше min_interval, не больше 20 мин
+                step_seconds = max(min_interval, min(step_seconds, 1200))
+            else:
+                step_seconds = min_interval
+
+            run_time = current_time + timedelta(seconds=step_seconds)
 
             queue_minutes = (run_time - datetime.now()).total_seconds() / 60
             if queue_minutes > MAX_QUEUE_MINUTES:
@@ -552,7 +573,7 @@ async def job_collect_news() -> None:
             scheduled_count += 1
             actual_delay = int((run_time - datetime.now()).total_seconds())
             logger.info(
-                f"⏳ [{level} {score}] delay={delay_seconds}, actual={actual_delay}с, run_time={run_time.strftime('%H:%M:%S')} → {title}..."
+                f"⏳ [{level} {score}] delay={delay_seconds}, step={step_seconds}с, actual={actual_delay}с, run_time={run_time.strftime('%H:%M:%S')} → {title}..."
             )
             current_time = run_time
 
