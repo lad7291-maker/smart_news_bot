@@ -331,7 +331,16 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
                 existing_candidates=candidates if candidates else None,
             )
 
-        ai_comment, image_url = await asyncio.gather(ai_task, image_task)
+        try:
+            ai_comment, image_url = await asyncio.wait_for(
+                asyncio.gather(ai_task, image_task), timeout=60
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                f"⏱ Таймаут AI/изображения для статьи: {article.get('title', '')[:50]}..."
+            )
+            ai_comment = ""
+            image_url = existing_image if existing_image and existing_image_score >= 65 else None
 
         article["ai_comment"] = ai_comment
         if existing_image and existing_image_score >= 65:
