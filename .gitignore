@@ -3,6 +3,10 @@
 *.env
 .env.*.local
 
+# Покрытие тестов
+.coverage
+htmlcov/
+
 # Python
 __pycache__/
 *.py[cod]

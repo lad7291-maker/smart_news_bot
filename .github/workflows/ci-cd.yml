@@ -55,7 +55,7 @@ jobs:
       - name: 🚀 Deploy
         run: |
           ssh -o StrictHostKeyChecking=no -p ${{ secrets.VPS_PORT || 22 }} ${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }} << 'EOF'
-            cd ${{ secrets.VPS_DEPLOY_PATH || '/root/smart_news_bot' }}
+            cd ${{ secrets.VPS_DEPLOY_PATH }}
             git fetch origin
             git reset --hard origin/master
             source venv/bin/activate
