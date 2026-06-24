@@ -759,7 +759,7 @@ async def job_collect_news() -> None:
         if yellow_articles:
             _yellow_digest_queue.extend(yellow_articles)
             if len(_yellow_digest_queue) > 30:
-                _yellow_digest_queue = _yellow_digest_queue[-30:]
+                _yellow_digest_queue[:] = _yellow_digest_queue[-30:]
             logger.info(f"📚 Yellow-новостей в очереди дайджеста: {len(_yellow_digest_queue)}")
 
         elif yellow_articles:
@@ -1393,6 +1393,19 @@ async def main() -> None:
         replace_existing=True,
     )
     scheduler.start()
+
+    # Устанавливаем зависимости для scheduler_jobs (P1-001)
+    from core.scheduler_jobs import set_scheduler_dependencies
+
+    set_scheduler_dependencies(
+        bot=bot,
+        scheduler=scheduler,
+        cache_manager=cache_manager,
+        parser=parser,
+        config=config,
+        SCORE_DELAYS=SCORE_DELAYS,
+        MAX_POSTS_PER_RUN=MAX_POSTS_PER_RUN,
+    )
 
     # Очищаем ВСЕ старые publish-задачи при запуске — иначе они копятся на дни
     removed = 0

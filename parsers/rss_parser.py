@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import feedparser
+import requests
 
 from config import config
 
@@ -38,7 +39,10 @@ class RSSParser:
         articles = []
         try:
             logger.debug(f"Загрузка RSS: {feed_url}")
-            feed = feedparser.parse(feed_url)
+            # FIX: таймаут 15 сек, чтобы не висеть навечно при недоступном RSS
+            resp = requests.get(feed_url, timeout=15, headers={"User-Agent": "SmartNewsBot/1.0"})
+            resp.raise_for_status()
+            feed = feedparser.parse(resp.content)
 
             if feed.get("bozo_exception", False):
                 logger.warning(f"Проблема при парсинге {feed_url}: {feed.bozo_exception}")
@@ -98,34 +102,4 @@ class RSSParser:
         text = re.sub(r"<[^>]+>", "", text)
         # Убираем лишние пробелы и переносы строк
         text = " ".join(text.split())
-        return text[:500]  # Ограничиваем длину
-
-
-# Для совместимости со старым кодом оставляем функцию-обёртку
-def parse_rss_feed(feed_url: str, source_tag: str, hours_limit: int = 72) -> List[Dict[str, Any]]:
-    """Функция-обёртка для обратной совместимости."""
-    parser = RSSParser(hours_limit=hours_limit)
-    return parser.parse_feed(feed_url, source_tag)
-
-
-if __name__ == "__main__":
-    # Простой тест при запуске файла напрямую
-    import sys
-    from pathlib import Path
-
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-    from utils.logger import setup_logging
-
-    setup_logging()
-
-    test_sources = [
-        {"url": "https://habr.com/ru/rss/hub/ai/?fl=ru", "tag": "AI"},
-        {"url": "https://www.coindesk.com/arc/outboundfeeds/rss/", "tag": "Crypto"},
-    ]
-
-    parser = RSSParser(hours_limit=168)  # последние 7 дней для теста
-    for source in test_sources:
-        news = parser.parse_feed(source["url"], source["tag"])
-        print(f"\n🔹 {source['tag']}: {len(news)} новостей")
-        for i, item in enumerate(news[:3], 1):
-            print(f"   {i}. {item['title'][:80]}...")
+        return text

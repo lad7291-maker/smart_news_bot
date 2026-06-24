@@ -208,17 +208,51 @@ async def _send_yellow_digest(articles: List[Dict[str, Any]]) -> None:
 
 
 async def _send_scheduled_digest() -> None:
-    """Отправляет накопленный дайджест в 9:30 и 18:30 МСК."""
+    """Отправляет накопленный дайджест в 10:00, 17:00 и 21:00 МСК."""
     global _yellow_digest_queue
     if not _yellow_digest_queue:
         logger.info("📭 Дайджест пуст, ничего не отправляем")
         return
     if len(_yellow_digest_queue) >= 3:
-        await _send_yellow_digest(_yellow_digest_queue)
-        logger.info(f"✅ Дайджест отправлен по расписанию: {len(_yellow_digest_queue)} новостей")
+        # Убираем дубли по ссылке и похожие по заголовку
+        seen_links: set = set()
+        seen_titles: list = []
+        unique_articles: list = []
+        for article in _yellow_digest_queue:
+            link = article.get("link", "")
+            title = article.get("title", "")
+            if not link:
+                continue
+            if link in seen_links:
+                continue
+            # Проверяем похожий заголовок (простая эвристика: нормализованное сравнение)
+            norm_title = title.lower().strip().replace(" ", "")
+            is_duplicate = False
+            for seen in seen_titles:
+                if norm_title == seen or (
+                    len(norm_title) > 10
+                    and len(seen) > 10
+                    and (norm_title in seen or seen in norm_title)
+                ):
+                    is_duplicate = True
+                    break
+            if is_duplicate:
+                continue
+            seen_links.add(link)
+            seen_titles.append(norm_title)
+            unique_articles.append(article)
+        if len(unique_articles) >= 3:
+            await _send_yellow_digest(unique_articles)
+            logger.info(
+                f"✅ Дайджест отправлен по расписанию: {len(unique_articles)} уникальных новостей (было {len(_yellow_digest_queue)})"
+            )
+        else:
+            logger.info(
+                f"📭 После дедупликации мало новостей ({len(unique_articles)}), накапливаем"
+            )
     else:
         logger.info(f"📭 Мало новостей для дайджеста ({len(_yellow_digest_queue)}), накапливаем")
-    _yellow_digest_queue = []
+    _yellow_digest_queue.clear()
 
 
 # === Сбор из одного источника ===
@@ -621,7 +655,7 @@ async def job_collect_news() -> None:
         global _yellow_digest_queue
         _yellow_digest_queue.extend(yellow_articles)
         if len(_yellow_digest_queue) > 30:
-            _yellow_digest_queue = _yellow_digest_queue[-30:]
+            _yellow_digest_queue[:] = _yellow_digest_queue[-30:]
 
         # P2-004: Обновляем метрику длины очереди
         from utils.metrics import collector

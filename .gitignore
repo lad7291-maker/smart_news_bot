@@ -53,3 +53,10 @@ assets/*.mov
 # БД SQLite (wal/shm генерируются автоматически)
 *.db-shm
 *.db-wal
+
+# Playwright screenshots
+.playwright-mcp/
+*.png
+
+# Landing assets (deployed separately)
+landing/
