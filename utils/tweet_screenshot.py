@@ -67,6 +67,7 @@ async def screenshot_tweet(
     Returns:
         Путь к скриншоту или None если не удалось
     """
+    browser = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -99,12 +100,19 @@ async def screenshot_tweet(
                 await page.screenshot(path=output_path, full_page=False)
 
             await browser.close()
+            browser = None
             logger.info(f"📸 Скриншот твита сохранен: {output_path}")
             return output_path
 
     except Exception as e:
         logger.warning(f"❌ Ошибка скриншота твита {url}: {e}")
         return None
+    finally:
+        if browser is not None:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
 
 async def find_tweet_screenshot(article: dict) -> Optional[str]:

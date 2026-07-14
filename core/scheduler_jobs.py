@@ -193,7 +193,23 @@ async def _send_yellow_digest(articles: List[Dict[str, Any]]) -> None:
         title = article.get("title", "Без заголовка")
         if link:
             cache_manager.mark_processing(link, "digest", "digest", title)
-            cache_manager.mark_processed(link, success=True)
+            # Create short AI comment (first 2 sentences or max 300 chars)
+        ai_comment = article.get("ai_comment", "")
+        short_ai = ""
+        if ai_comment:
+            sentences = ai_comment.split('. ')
+            short_ai = '. '.join(sentences[:2])
+            if not short_ai.endswith('.'):
+                short_ai += '.'
+            if len(short_ai) > 300:
+                short_ai = short_ai[:300].rsplit(' ', 1)[0] + '...'
+        
+        cache_manager.mark_processed(
+            link, success=True, 
+            ai_comment=ai_comment,
+            summary=article.get("summary", ""),
+            short_ai_comment=short_ai
+        )
 
     try:
         await _bot().send_message(
@@ -457,13 +473,29 @@ async def publish_single_article(article: Dict[str, Any]) -> None:
 
         await send_multiple_news([article], max_posts=1, delay=0)
 
-        cache_manager.mark_processed(link, success=True)
+        # Create short AI comment (first 2 sentences or max 300 chars)
+        ai_comment = article.get("ai_comment", "")
+        short_ai = ""
+        if ai_comment:
+            sentences = ai_comment.split('. ')
+            short_ai = '. '.join(sentences[:2])
+            if not short_ai.endswith('.'):
+                short_ai += '.'
+            if len(short_ai) > 300:
+                short_ai = short_ai[:300].rsplit(' ', 1)[0] + '...'
+        
+        cache_manager.mark_processed(
+            link, success=True, 
+            ai_comment=ai_comment,
+            summary=article.get("summary", ""),
+            short_ai_comment=short_ai
+        )
         publish_policy.record_publish(score, article.get("title", ""), article.get("source", ""))
         health_checker.record_publish()
         logger.info(f"✅ Опубликовано [{level} {score}]: {title}...")
     except Exception as e:
         logger.error(f"❌ Ошибка публикации ({link}): {e}", exc_info=True)
-        cache_manager.mark_processed(link, success=False)
+        cache_manager.mark_processed(link, success=False, ai_comment="", summary="", short_ai_comment="")
         health_checker.record_error()
 
 

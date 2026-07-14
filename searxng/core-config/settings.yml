@@ -84,7 +84,6 @@ search:
   # formats: [html, csv, json, rss]
   formats:
     - html
-    - json
 
 server:
   # Is overwritten by ${SEARXNG_PORT} and ${SEARXNG_BIND_ADDRESS}
@@ -103,9 +102,9 @@ server:
   # If your instance owns a /etc/searxng/settings.yml file, then set the following
   # values there.
 
-  secret_key: "H538KYIYZpaPCgsNG6wPtG7iYiEiLe"  # Is overwritten by ${SEARXNG_SECRET}
+  secret_key: "dzepZduSNMha7jGmPT9DlecabVTZxH"  # Is overwritten by ${SEARXNG_SECRET}
   # Proxy image results through SearXNG. Is overwritten by ${SEARXNG_IMAGE_PROXY}
-  image_proxy: true
+  image_proxy: false
   # 1.0 and 1.1 are supported
   http_protocol_version: "1.0"
   # POST queries are "more secure!" but are also the source of hard-to-locate

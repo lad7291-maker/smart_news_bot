@@ -22,10 +22,23 @@ from config import config
 
 logger = logging.getLogger(__name__)
 
-# Минимальные размеры для приемлемого изображения
-_MIN_IMAGE_WIDTH = 600
-_MIN_IMAGE_HEIGHT = 400
+_SOURCE_PENALTIES = {
+    "interfax.ru/ftproot/textphotos/": -30,
+    "interfax.ru/ftproot/photos/": -20,
+}
 
+def _apply_source_penalty(url, score):
+    if not url:
+        return score
+    lower = url.lower()
+    for pattern, penalty in _SOURCE_PENALTIES.items():
+        if pattern in lower:
+            new_score = max(0, score + penalty)
+            logger.debug(f"Source penalty {pattern}: {score} -> {new_score}")
+            return new_score
+    return score
+
+# Штрафы за известные generic-источники (мусорные изображения)
 
 def _check_image_size(soup: BeautifulSoup, img_src: str) -> Tuple[bool, int, int]:
     """
@@ -413,7 +426,7 @@ async def extract_image_with_score(
     rss_image = extract_image_from_rss_entry(entry)
     if rss_image:
         # RSS enclosure — оригинальное фото, всегда релевантно
-        return (rss_image, 75, "rss")
+        return (rss_image, _apply_source_penalty(rss_image, 75), "rss")
 
     if not article_link or not article_link.startswith(("http://", "https://")):
         return None
@@ -425,7 +438,7 @@ async def extract_image_with_score(
     # Но фильтруем соц-карточки
     if og_image and _is_og_reliable_domain(og_image):
         if not _is_og_social_card(og_image):
-            return (og_image, 80, "og")
+            return (og_image, _apply_source_penalty(og_image, 80), "og")
         logger.debug(f"🚫 OG соц-карточка от доверенного домена отклонена: {og_image[:60]}...")
 
     # Шаг 2b: Первое фото из статьи
@@ -434,20 +447,20 @@ async def extract_image_with_score(
             # Для надёжных новостных доменов — считаем релевантным по умолчанию
             if _is_news_domain(article_image) or _is_image_relevant_to_title(article_image, title):
                 logger.debug(f"🖼 Article image: {article_image[:80]}...")
-                return (article_image, 60, "article")
+                return (article_image, _apply_source_penalty(article_image, 60), "article")
             else:
                 # Нерелевантное фото из статьи — сомнительный score
                 logger.debug(f"⚠️ Article image сомнительно: {article_image[:80]}...")
-                return (article_image, 40, "article")
+                return (article_image, _apply_source_penalty(article_image, 40), "article")
 
     # Шаг 3: OG от остальных доменов
     if og_image:
         if not _is_og_social_card(og_image):
             # Проверяем релевантность
             if _is_image_relevant_to_title(og_image, title):
-                return (og_image, 55, "og")
+                return (og_image, _apply_source_penalty(og_image, 55), "og")
             else:
-                return (og_image, 35, "og")
+                return (og_image, _apply_source_penalty(og_image, 35), "og")
         logger.debug(f"🚫 OG соц-карточка отклонена: {og_image[:60]}...")
 
     return None

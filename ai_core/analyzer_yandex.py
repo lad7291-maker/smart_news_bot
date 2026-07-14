@@ -21,7 +21,7 @@ def check_yandex_available() -> bool:
     return _available
 
 
-@lru_cache(maxsize=100)
+# MEM-FIX: lru_cache убран — кэшировал coroutine-объекты → RuntimeError на повторном вызове
 async def async_analyze_with_yandexgpt(title: str, summary: str, score: int = 5) -> str:
     """
     Асинхронный вызов YandexGPT с кэшированием.

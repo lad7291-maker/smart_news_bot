@@ -124,7 +124,7 @@ class RouterAIProvider:
 
         raise Exception("All RouterAI retries failed")
 
-    @lru_cache(maxsize=128)
+    # MEM-FIX: lru_cache убран — кэшировал coroutine-объекты → RuntimeError на повторном вызове
     async def analyze_news(self, title: str, summary: str, score: int = 5) -> AIResponse:
         """Анализ новости через RouterAI."""
         if not self.available:

@@ -149,7 +149,7 @@ class CacheManager:
             logger.error(f"Ошибка при пометке processing: {e}")
             return False
 
-    def mark_processed(self, link: str, success: bool = True) -> bool:
+    def mark_processed(self, link: str, success: bool = True, ai_comment: str = None, summary: str = None, short_ai_comment: str = None) -> bool:
         link_hash = self._generate_hash(link)
         status = "processed" if success else "failed"
         now = datetime.now().isoformat()
@@ -159,10 +159,10 @@ class CacheManager:
                 cursor.execute(
                     """
                     UPDATE processed_links
-                    SET status = ?, last_attempt = ?, published_at = ?
+                    SET status = ?, last_attempt = ?, published_at = ?, ai_comment = ?, summary = ?, short_ai_comment = ?
                     WHERE link_hash = ?
                 """,
-                    (status, now, now, link_hash),
+                    (status, now, now, ai_comment or "", summary or "", short_ai_comment or "", link_hash),
                 )
             else:
                 cursor.execute(

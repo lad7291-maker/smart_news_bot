@@ -154,6 +154,7 @@ async def take_screenshot(url: str, timeout: float = 30.0) -> Optional[bytes]:
         )
         return None
 
+    browser = None
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
@@ -186,7 +187,9 @@ async def take_screenshot(url: str, timeout: float = 30.0) -> Optional[bytes]:
                     full_page=SCREENSHOT_FULL_PAGE,
                 )
 
+            # MEM-FIX: browser закрывается в finally
             await browser.close()
+            browser = None
 
             # Сохраняем в кэш
             with open(cache_path, "wb") as f:
@@ -198,6 +201,12 @@ async def take_screenshot(url: str, timeout: float = 30.0) -> Optional[bytes]:
     except Exception as e:
         logger.warning(f"❌ Ошибка скриншота {url[:60]}: {e}")
         return None
+    finally:
+        if browser is not None:
+            try:
+                await browser.close()
+            except Exception:
+                pass
 
 
 async def _hide_clutter(page):

@@ -40,7 +40,7 @@ class RSSParser:
         try:
             logger.debug(f"Загрузка RSS: {feed_url}")
             # FIX: таймаут 15 сек, чтобы не висеть навечно при недоступном RSS
-            resp = requests.get(feed_url, timeout=15, headers={"User-Agent": "SmartNewsBot/1.0"})
+            resp = requests.get(feed_url, timeout=30, headers={"User-Agent": "SmartNewsBot/1.0"})
             resp.raise_for_status()
             feed = feedparser.parse(resp.content)
 

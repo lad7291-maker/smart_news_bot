@@ -23,6 +23,11 @@ except ImportError:
     find_news_image = None
 
 try:
+    from utils.image_dedup import is_image_duplicate, store_image_hash
+except ImportError:
+    is_image_duplicate = None
+    store_image_hash = None
+try:
     from utils.image_processor import process_image_for_telegram
 except ImportError:
     process_image_for_telegram = None
@@ -56,7 +61,10 @@ async def send_news_to_channel(
     # 1. Пробуем фото (приоритет: RSS/OG/HTML → Stock → Скриншот → SearXNG → Fallback)
     if find_news_image and process_image_for_telegram:
         try:
-            image_url = await find_news_image(news)
+            # MEM-FIX: image_url уже найден в publish_single_article — не ищем повторно
+            image_url = news.get("image_url")
+            if not image_url:
+                image_url = await find_news_image(news)
             if image_url:
                 # Проверяем, является ли URL скриншотом (это URL статьи, а не изображения)
                 from utils.screenshot_generator import (
@@ -102,6 +110,11 @@ async def send_news_to_channel(
                     image_data = processed if isinstance(processed, bytes) else None
 
                 if image_data:
+                    # Check for duplicate images
+                    if is_image_duplicate and is_image_duplicate(image_data):
+                        logger.info("Duplicate image detected, skipping photo")
+                        image_data = None
+                if image_data:
                     caption = _truncate_caption(message_text)
                     # aiogram 3.x expects FSInputFile for bytes
                     import tempfile
@@ -123,6 +136,10 @@ async def send_news_to_channel(
                         os.unlink(tmp_path)
                     except Exception:
                         pass
+                    # Store hash for deduplication
+                    if store_image_hash and image_data:
+                        store_image_hash(image_data, image_url)
+
                     # Mark image as used for dedup
                     try:
                         from storage.cache import cache_manager

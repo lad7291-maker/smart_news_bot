@@ -454,7 +454,11 @@ async def process_image_for_telegram(
             clip_result = await score_image_relevance(img, article_title)
             # Для доверенных доменов — пониженный порог (0.15), но не полный пропуск
             # Иначе нерелевантные фото (например, фото Дзюбы для новости про Иран) проходят
-            effective_min_score = 0.15 if trusted_domain else min_clip_score
+            is_stock = any(s in image_url.lower() for s in ["unsplash", "pexels", "pixabay", "gettyimages", "shutterstock"])
+            if is_stock:
+                effective_min_score = max(min_clip_score, 0.30)
+            else:
+                effective_min_score = 0.15 if trusted_domain else min_clip_score
             if clip_result.score < effective_min_score:
                 logger.info(
                     f"🚫 CLIP отклонил изображение (score={clip_result.score:.3f} < {effective_min_score}): {image_url[:60]}..."
@@ -484,7 +488,7 @@ async def process_image_for_telegram(
     # Шаг 5: Обрезка под соотношение сторон
     # Сначала 1:1 для квадратного превью канала (Telegram показывает квадрат в списке)
     # Затем 16:9 для самого поста
-    img_preview = crop_to_aspect(img.copy(), TELEGRAM_PREVIEW_ASPECT)
+    # MEM-FIX: dead img.copy() убран — preview не использовался (6MB на пост)
     img_post = crop_to_aspect(img, target_aspect)
 
     # Используем 16:9 для поста

@@ -304,6 +304,14 @@ async def _extract_keywords_ai(title: str, summary: str) -> Optional[str]:
 def _extract_top_keywords(title: str, summary: str, max_words: int = 5) -> str:
     """Извлекает топ-N ключевых слов из заголовка для поиска фото."""
     text = f"{title} {summary[:200]}".strip()
+    # Убираем даты, дни недели, числа
+    months = r"январ[ья]|феврал[ья]|март[а]?|апрел[ья]|ма[йя]|июн[ья]|июл[ья]|август[а]?|сентябр[ья]|октябр[ья]|ноябр[ья]|декабр[ья]"
+    days = r"понедельник|вторник|сред[аы]|четверг|пятниц[аы]|суббот[аы]|воскресень[ея]"
+    text = re.sub(r"\d{1,2}\s*" + months + r"", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"" + months + r"\s*\d{1,4}", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"" + days + r"", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"20\d{2}", " ", text)
+    text = re.sub(r"\d+", " ", text)
     text = re.sub(r"[^\w\s]", " ", text)
     words = text.split()
 
