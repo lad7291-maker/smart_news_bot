@@ -60,3 +60,5 @@ assets/*.mov
 
 # Landing assets (deployed separately)
 landing/
+storage/*.json
+storage/*.db.backup*
