@@ -27,6 +27,12 @@ _SOURCE_PENALTIES = {
     "interfax.ru/ftproot/photos/": -20,
 }
 
+# Минимальные размеры контентного изображения (px).
+# Меньше — считаем иконкой/трекером, а не фото статьи.
+_MIN_IMAGE_WIDTH = 200
+_MIN_IMAGE_HEIGHT = 150
+
+
 def _apply_source_penalty(url, score):
     if not url:
         return score
@@ -38,7 +44,9 @@ def _apply_source_penalty(url, score):
             return new_score
     return score
 
+
 # Штрафы за известные generic-источники (мусорные изображения)
+
 
 def _check_image_size(soup: BeautifulSoup, img_src: str) -> Tuple[bool, int, int]:
     """

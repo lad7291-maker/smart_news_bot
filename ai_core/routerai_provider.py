@@ -6,7 +6,6 @@ RouterAI Provider — OpenAI-compatible API агрегатор.
 import asyncio
 import os
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any, Dict, Optional
 
 import aiohttp

@@ -3,7 +3,6 @@ YandexGPT fallback-провайдер (асинхронная версия).
 """
 
 import os
-from functools import lru_cache
 
 import aiohttp
 
