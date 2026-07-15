@@ -452,13 +452,32 @@ async def process_image_for_telegram(
     if check_clip and article_title:
         try:
             clip_result = await score_image_relevance(img, article_title)
-            # Для доверенных доменов — пониженный порог (0.15), но не полный пропуск
-            # Иначе нерелевантные фото (например, фото Дзюбы для новости про Иран) проходят
-            is_stock = any(s in image_url.lower() for s in ["unsplash", "pexels", "pixabay", "gettyimages", "shutterstock"])
+            # Новостные домены: CLIP с низким порогом — отсечет откровенный мусор
+            is_stock = any(
+                s in image_url.lower()
+                for s in ["unsplash", "pexels", "pixabay", "gettyimages", "shutterstock"]
+            )
+            is_news_domain = any(
+                d in image_url.lower()
+                for d in [
+                    "ria.ru",
+                    "rbc.ru",
+                    "tass.ru",
+                    "rt.com",
+                    "interfax.ru",
+                    "kommersant.ru",
+                    "lenta.ru",
+                    "vedomosti.ru",
+                    "rg.ru",
+                    "iz.ru",
+                ]
+            )
             if is_stock:
                 effective_min_score = max(min_clip_score, 0.30)
+            elif is_news_domain:
+                effective_min_score = 0.05
             else:
-                effective_min_score = 0.15 if trusted_domain else min_clip_score
+                effective_min_score = min_clip_score
             if clip_result.score < effective_min_score:
                 logger.info(
                     f"🚫 CLIP отклонил изображение (score={clip_result.score:.3f} < {effective_min_score}): {image_url[:60]}..."
